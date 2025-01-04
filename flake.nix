@@ -13,6 +13,5 @@
     {
       packages.default = self.packages.x86_64-linux.lib;
       packages.x86_64-linux.lib = kubelib;
-      packages.x86_64-linux.test = self.packages.x86_64-linux.lib.yamlFileToMultiJsonFiles ./multi.yml;
     };
 }

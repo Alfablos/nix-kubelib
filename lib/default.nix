@@ -11,6 +11,9 @@ let
     in
       map (file: drv.outPath + "/" + file) fileRelPaths;
 
+  /*
+  */
+
 in
 rec {
   inherit helm;
@@ -29,6 +32,14 @@ rec {
   #     })
   #     { keys = []; }
   #     elem;
+
+  keyValFromJsonResource = path:
+    let content = builtins.fromJSON (builtins.readFile path);
+    in  { "${content.metadata.name}-${lib.strings.toLower content.kind}-${content.metadata.namespace or (lib.strings.toLower content.kind)}" = content; };
+
+  keyValFromJsonResources = paths:
+    let list = map (p: keyValFromJsonResource p) paths;
+    in lib.attrsets.mergeAttrsList list;
 
   yamlToJsonFile =
     yamlContent:
@@ -91,6 +102,12 @@ rec {
 
   _docs = {
     functions = {
+      keyValFromJsonResource = ''
+        Generates a key value pair from a json file containing a single Kubernetes resource. They key is templated using '.metadata.name - .kind - .metadata.namespace', the value is the nix equivalent
+        From a JSON file whose content is {"apiVersion":"v1", "kind": "Pod", "metadata": {"name": "test", "namespace": "somenamespace"}}
+        An attribute set is generated like: { test-pod-somenamespace = { apiVersion = "v1"; kind = "Pod", metadata = { name = "test"; namespace = "somenamespace"; }; }; }
+      '';
+      keyValFromJsonResources = "Same as keyValFromJsonResource but for multiple paths";
       yamlToJsonFile = "Converts YAML content into a JSON file.";
       yamlToMultiJsonFiles = "Converts a multi object YAML content into multiple JSON files.";
       yamlToNix = "Converts YAML content into Nix equivalent.";
