@@ -1,0 +1,6 @@
+= Nix utilities for Helm
+
+Inspired by https://github.com/farcaller/nix-kube-generators.
+
+A set of tools to handle Helm resources.
+
