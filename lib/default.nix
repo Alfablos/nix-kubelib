@@ -33,6 +33,8 @@ rec {
   #     { keys = []; }
   #     elem;
 
+  toList = items: { apiVersion = "v1"; kind = "List"; inherit items; };
+
   keyValFromJsonResource = path:
     let content = builtins.fromJSON (builtins.readFile path);
     in  { "${content.metadata.name}-${lib.strings.toLower content.kind}-${content.metadata.namespace or (lib.strings.toLower content.kind)}" = content; };
