@@ -50,7 +50,7 @@ rec {
       extraOpts ? [ ],
     }:
     let
-      _nsCheck =
+      nsCheck = str:
         if (builtins.isNull namespace && createNamespace) then
           builtins.throw "createNamespace is set to true but namespace is null!"
         else
@@ -73,7 +73,7 @@ rec {
       passAsFile = [ "helmValues" ];
 
       namespaceFlag = if !builtins.isNull namespace then "--namespace ${namespace}" else "";
-      namespaceFlags = namespaceFlag + (if createNamespace then " --create-namespace" else "");
+      namespaceFlags = nsCheck (lib.strings.concatStringsSep " " [ namespaceFlag (if createNamespace then " --create-namespace" else "") ]); # Forces a string
 
       includeCRDsFlag = if withCRDs then "--include-crds" else "";
 
