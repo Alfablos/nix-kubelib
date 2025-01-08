@@ -55,10 +55,11 @@ rec {
         apiVersion = "v1"; kind = "Namespace"; inherit name;
         labels = { "kubernetes.io/metadata.name" = name; inherit name; };
       };
-      nsName = if !builtins.isNull namespace then "-${namespace}" else "";
+      # nsName = if !builtins.isNull namespace then "-${namespace}" else "";
     in
     pkgs.stdenv.mkDerivation rec {
-      name = "${chartName}${nsName}";
+      # name = "${chartName}${nsName}";
+      name = "${chartName}";
       chart = downloadHelmChart {
         inherit
           repo
