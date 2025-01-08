@@ -1,18 +1,16 @@
 { pkgs, lib, ... }:
 let
-  helm = pkgs.callPackage ./helm.nix;
+  helm = pkgs.callPackage ./helm.nix { };
 
   readAndThen = path: f: f (builtins.readFile path);
 
-  getGeneratedFiles = with builtins;
+  getGeneratedFiles =
+    with builtins;
     drv:
     let
       fileRelPaths = attrNames (readDir drv.outPath);
     in
-      map (file: drv.outPath + "/" + file) fileRelPaths;
-
-  /*
-  */
+    map (file: drv.outPath + "/" + file) fileRelPaths;
 
 in
 rec {
@@ -33,15 +31,30 @@ rec {
   #     { keys = []; }
   #     elem;
 
-  toList = items: { apiVersion = "v1"; kind = "List"; inherit items; };
+  toList = items: {
+    apiVersion = "v1";
+    kind = "List";
+    inherit items;
+  };
 
-  keyValFromJsonResource = path:
-    let content = builtins.fromJSON (builtins.readFile path);
-    in  { "${content.metadata.name}-${lib.strings.toLower content.kind}-${content.metadata.namespace or (lib.strings.toLower content.kind)}" = content; };
+  keyValFromJsonResource =
+    path:
+    let
+      content = builtins.fromJSON (builtins.readFile path);
+    in
+    {
+      "${content.metadata.name}-${lib.strings.toLower content.kind}-${
+        content.metadata.namespace or (lib.strings.toLower content.kind)
+      }" =
+        content;
+    };
 
-  keyValFromJsonResources = paths:
-    let list = map (p: keyValFromJsonResource p) paths;
-    in lib.attrsets.mergeAttrsList list;
+  keyValFromJsonResources =
+    paths:
+    let
+      list = map (p: keyValFromJsonResource p) paths;
+    in
+    lib.attrsets.mergeAttrsList list;
 
   yamlToJsonFile =
     yamlContent:
@@ -55,10 +68,9 @@ rec {
 
   yamlToMultiJsonFiles =
     yamlContent:
-    lib.pipe
-    yamlContent
-    [
-      (yamlContent:
+    lib.pipe yamlContent [
+      (
+        yamlContent:
         pkgs.stdenv.mkDerivation {
           name = "yaml2multijsonfile";
           inherit yamlContent;
@@ -69,16 +81,18 @@ rec {
             cd $out
             ${pkgs.yq-go}/bin/yq -p yaml -o json -s '.metadata.name + "-" + .kind + "-" + (.metadata.namespace // "namespace")' $yamlContentPath
           '';
-        })
+        }
+      )
       getGeneratedFiles
     ];
 
-  yamlToNixList = with builtins;
+  yamlToNixList =
+    with builtins;
     yamlContent:
     let
       fileAbsPaths = yamlToMultiJsonFiles yamlContent;
     in
-      map (path: fromJSON (readFile path)) fileAbsPaths;
+    map (path: fromJSON (readFile path)) fileAbsPaths;
 
   yamlToJson = yamlContent: builtins.readFile (yamlToJsonFile yamlContent);
   # lib.pipe
@@ -121,5 +135,3 @@ rec {
     };
   };
 }
-
-
