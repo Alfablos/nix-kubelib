@@ -50,11 +50,6 @@ rec {
       extraOpts ? [ ],
     }:
     let
-      nsCheck = str:
-        if (builtins.isNull namespace && createNamespace) then
-          builtins.throw "createNamespace is set to true but namespace is null!"
-        else
-          { };
       nsName = if !builtins.isNull namespace then "-${namespace}" else "";
     in
     pkgs.stdenv.mkDerivation rec {
@@ -73,7 +68,11 @@ rec {
       passAsFile = [ "helmValues" ];
 
       namespaceFlag = if !builtins.isNull namespace then "--namespace ${namespace}" else "";
-      namespaceFlags = nsCheck (lib.strings.concatStringsSep " " [ namespaceFlag (if createNamespace then " --create-namespace" else "") ]); # Forces a string
+      namespaceFlags =
+        if (builtins.isNull namespace && createNamespace) then
+          builtins.throw "createNamespace is set to true but namespace is null!"
+        else
+          lib.strings.concatStringsSep " " [ namespaceFlag (if createNamespace then "--create-namespace" else "") ]; # Forces a string
 
       includeCRDsFlag = if withCRDs then "--include-crds" else "";
 
