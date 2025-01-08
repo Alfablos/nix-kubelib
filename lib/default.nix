@@ -1,6 +1,5 @@
 { pkgs, lib, ... }:
 let
-  helm = pkgs.callPackage ./helm.nix { };
 
   readAndThen = path: f: f (builtins.readFile path);
 
@@ -10,11 +9,11 @@ let
     let
       fileRelPaths = attrNames (readDir drv.outPath);
     in
-    map (file: drv.outPath + "/" + file) fileRelPaths;
+      map (file: drv.outPath + "/" + file) fileRelPaths;
 
 in
 rec {
-  inherit helm;
+  helm = pkgs.callPackage ./helm.nix { inherit nixToYaml; };
   # recurseKeys = elem:
   #   # let
   #   #   baseCase = elem;
@@ -116,6 +115,17 @@ rec {
 
   yamlFileToNixList = path: readAndThen path yamlToNixList;
 
+  nixToYaml = attrs:
+    let jsonContent = builtins.toJSON attrs;
+    in
+      pkgs.stdenv.mkDerivation {
+        inherit jsonContent;
+        name = "nixtoYaml";
+        passAsFile = [ "jsonContent" ];
+        phases = [ "buildPhase" ];
+        buildPhase = "${pkgs.yq-go}/bin/yq -p json -o yaml $jsonContentPath > $out";
+      };
+
   _docs = {
     functions = {
       keyValFromJsonResource = ''
@@ -132,6 +142,7 @@ rec {
       yamlFileToMultiJsonFiles = "Same as yamlToMultiJsonFiles but accepts a file as a source.";
       yamlFileToNix = "Same as yamlToNix but accepts a file as a source.";
       yamlFileToNixList = "Same as yamlToNixList but accepts a file as a source.";
+      nixToYaml = "Converts an attribute set to YAML";
     };
   };
 }

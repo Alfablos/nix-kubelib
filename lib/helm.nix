@@ -1,4 +1,4 @@
-{ lib, pkgs, ... }:
+{ lib, pkgs, nixToYaml, ... }:
 rec {
   # helm.downloadHelmChart { repo = "https://traefik.github.io/charts"; chartName = "traefik"; version = "33.2.1"; chartHash = "sha256-RSd7Drtzeen5L96Zsj9N5LqQJtKSMK6EjsCwnkl5Gxk="; }
   downloadHelmChart =
@@ -50,11 +50,15 @@ rec {
       extraOpts ? [ ],
     }:
     let
+      # Helm template will not create the namespace even when being passed `--create-namespace` due to a bug I guess
+      createNamespaceManfest = name: nixToYaml {
+        apiVersion = "v1"; kind = "Namespace"; inherit name;
+        labels = { "kubernetes.io/metadata.name" = name; inherit name; };
+      };
       nsName = if !builtins.isNull namespace then "-${namespace}" else "";
     in
     pkgs.stdenv.mkDerivation rec {
       name = "${chartName}${nsName}";
-      inherit kubeVersion;
       chart = downloadHelmChart {
         inherit
           repo
@@ -72,7 +76,10 @@ rec {
         if (builtins.isNull namespace && createNamespace) then
           builtins.throw "createNamespace is set to true but namespace is null!"
         else
-          lib.strings.concatStringsSep " " [ namespaceFlag (if createNamespace then "--create-namespace" else "") ]; # Forces a string
+          lib.strings.concatStringsSep " " [
+            namespaceFlag
+            (if createNamespace then "--create-namespace" else "")
+          ]; # Forces a string
 
       includeCRDsFlag = if withCRDs then "--include-crds" else "";
 
@@ -90,9 +97,16 @@ rec {
       extraOptsFlags = lib.strings.concatStringsSep " " extraOpts;
 
       phases = [ "installPhase" ];
+
+
       installPhase = ''
 
         export HELM_CACHE_HOME="$TMP/.nix-helm-build-cache"
+
+        if $createNamespace; then
+          cat ${createNamespaceManfest name} >> $out
+          echo >> $out
+        fi;
 
         ${pkgs.kubernetes-helm}/bin/helm template \
           $includeCRDsFlag \
