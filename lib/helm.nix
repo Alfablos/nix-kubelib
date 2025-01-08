@@ -32,6 +32,7 @@ rec {
       outputHash = chartHash;
     };
 
+
   buildHelmChart =
     {
       repo,
@@ -98,14 +99,12 @@ rec {
           $includeCRDsFlag \
           $namespaceFlags \
           --kube-version "${kubeVersion}" \
-          ${if lib.lists.length (lib.attrsets.attrNames values) == 0 then "" else "$helmValuesPath"} \
+          ${if lib.lists.length (lib.attrsets.attrNames values) == 0 then "" else "--values $helmValuesPath"} \
           ${extraOptsFlags} \
           ${apiVersionsFlags} \
           ${name} \
           ${chart} \
           >> $out
-
       '';
     };
-
 }
