@@ -1,4 +1,9 @@
-{ lib, pkgs, nixToYaml, ... }:
+{
+  lib,
+  pkgs,
+  nixToYaml,
+  ...
+}:
 rec {
   # helm.downloadHelmChart { repo = "https://traefik.github.io/charts"; chartName = "traefik"; version = "33.2.1"; chartHash = "sha256-RSd7Drtzeen5L96Zsj9N5LqQJtKSMK6EjsCwnkl5Gxk="; }
   downloadHelmChart =
@@ -32,7 +37,6 @@ rec {
       outputHash = chartHash;
     };
 
-
   buildHelmChart =
     {
       repo,
@@ -51,12 +55,19 @@ rec {
     }:
     let
       # Helm template will not create the namespace even when being passed `--create-namespace` due to a bug I guess
-      createNamespaceManfest = name: nixToYaml {
-        apiVersion = "v1"; kind = "Namespace"; inherit name;
-        labels = { "kubernetes.io/metadata.name" = name; inherit name; };
-      };
-      # nsName = if !builtins.isNull namespace then "-${namespace}" else "";
+      createNamespaceManfest =
+        name:
+        nixToYaml {
+          apiVersion = "v1";
+          kind = "Namespace";
+          inherit name;
+          labels = {
+            "kubernetes.io/metadata.name" = name;
+            inherit name;
+          };
+        };
     in
+    # nsName = if !builtins.isNull namespace then "-${namespace}" else "";
     pkgs.stdenv.mkDerivation rec {
       # name = "${chartName}${nsName}";
       name = "${chartName}";
@@ -99,7 +110,6 @@ rec {
 
       phases = [ "installPhase" ];
 
-
       installPhase = ''
 
         export HELM_CACHE_HOME="$TMP/.nix-helm-build-cache"
@@ -113,7 +123,9 @@ rec {
           $includeCRDsFlag \
           $namespaceFlags \
           --kube-version "${kubeVersion}" \
-          ${if lib.lists.length (lib.attrsets.attrNames values) == 0 then "" else "--values $helmValuesPath"} \
+          ${
+            if lib.lists.length (lib.attrsets.attrNames values) == 0 then "" else "--values $helmValuesPath"
+          } \
           ${extraOptsFlags} \
           ${apiVersionsFlags} \
           ${name} \
