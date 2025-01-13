@@ -11,7 +11,7 @@ let
 
   readPathAndThen = path: f: f (readFile path);
 
-  callWithYamlContent = { ... }@args: f: kallPackage args f { yamlContent = readFile args.path; };
+  callWithYamlContent = args: f: kallPackage args f { yamlContent = readFile args.path; };
 
   getGeneratedFiles =
     with builtins;
@@ -20,6 +20,9 @@ let
       fileRelPaths = attrNames (readDir drv.outPath);
     in
     map (file: drv.outPath + "/" + file) fileRelPaths;
+    
+  jsonIsList = jsonContent:
+    isList (fromJSON jsonContent);
 
 in
 rec {
@@ -222,6 +225,13 @@ rec {
       buildPhase = "${pkgs.yq-go}/bin/yq -p json -o yaml $jsonContentPath > $out";
     };
 
+  jsonToYaml =
+    {
+      jsonContent,
+      topLevelKey ? null
+    }@args:
+    readFile ( kallPackage args jsonToYamlFile { } );
+
   jsonToYamlFile =
     {
       jsonContent,
@@ -232,11 +242,11 @@ rec {
       inherit jsonContent topLevelKey;
       passAsFile = [ "jsonContent" ];
       phases = [ "installPhase" ];
-      yqTransform = if topLevelKey != null then "--expression '{ \"${topLevelKey}\":. }'" else "";
+      yqTransform = if topLevelKey != null && jsonIsList jsonContent then "--expression '{ \"${topLevelKey}\":. }'" else "";
       installPhase = "${pkgs.yq-go}/bin/yq $jsonContentPath -p json -o yaml ${yqTransform} > $out";
     };
 
   jsonFileToYamlFile =
-    { path, topLevelKey }@args:
+    { path, topLevelKey ? null }@args:
     kallPackage args jsonToYamlFile { jsonContent = builtins.readFile path; };
 }

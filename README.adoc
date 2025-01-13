@@ -133,9 +133,7 @@ keyValFromJsonManifest (builtins.readFile ./server-cert.json)       # Single
 { mypp-serverauth-certificate-myapp = "{\"apiVersion\":\"cert-manager.io/v1\",\"kind\":\"Certificate\",\"metadata\":{\"name\":\"mypp-serverauth\",\"namespace\":\"myapp\"},\"spec\":{\"dnsNames\":[\"myapp.mydoma
 in.com\"],\"issuerRef\":{\"kind\":\"ClusterIssuer\",\"name\":\"letsencrypt-dns\"},\"secretName\":\"myapp-server-tls\",\"usages\":[\"server auth\"]}}"; }
 
-
-jsonFile = yamlToJson { yamlContent = builtins.readFile ./services.yml; }    # Multi
-keyValFromJsonManifest jsonFile
+keyValFromJsonManifest (yamlToJson { yamlContent = builtins.readFile ./services.yml; }    # Multi)
 
 [
   { myapp-service-myapp = "{\"apiVersion\":\"v1\",\"kind\":\"Service\",\"metadata\":{\"labels\":{\"app\":\"myapp\",\"component\":\"main\"},\"name\":\"myapp\",\"namespace\":\"myapp\"},\"spec\":{\"ports\":[{\"name\":\"http\",\"port\":80,\"protocol\":\"TCP\",\"targetPort\":\"http\"},{\"name\":\"https\",\"port\":443,\"protocol\":\"TCP\",\"targetPort\":\"https\"}],\"selector\":{\"app\":\"myapp\",\"components\":\"main\"}}}"; }
@@ -295,9 +293,9 @@ The input is an Attrset of:
 ====
 [source,nix]
 ----
-jf = yamlToJsonFile { yamlContent = builtins.readFile ./services.yml; outputType = "object"; }
 
-builtins.readFile jf        # Singe it returns a derivation
+
+builtins.readFile yamlToJsonFile { yamlContent = builtins.readFile ./services.yml; outputType = "object"; }        # Singe it returns a derivation
 
 "{\n  \"items\": [\n    {\n      \"apiVersion\": \"v1\",\n      \"kind\": \"Service\",\n      \"metadata\": {\n        \"name\": \"myapp\",\n        \"namespace\": \"myapp\",\n        \"labels\": {\n          \"app\": \"myapp\",\n          \"component\": \"main\"\n        }\n      },\n      \"spec\": {\n        \"ports\": [\n          {\n            \"name\": \"http\",\n            \"port\": 80,\n            \"protocol\": \"TCP\",\n            \"targetPort\": \"http\"\n          },\n          {\n            \"name\": \"https\",\n            \"port\": 443,\n            \"protocol\": \"TCP\",\n            \"targetPort\": \"https\"\n          }\n        ],\n        \"selector\": {\n          \"app\": \"myapp\",\n          \"components\": \"main\"\n        }\n      }\n    },\n    {\n      \"apiVersion\": \"v1\",\n      \"kind\": \"Service\",\n      \"metadata\": {\n        \"name\": \"myapp-jobscheduler\",\n        \"namespace\": \"myapp\",\n        \"labels\": {\n          \"app\": \"myapp\",\n          \"component\": \"jobscheduler\"\n        }\n      },\n      \"spec\": {\n        \"ports\": [\n          {\n            \"name\": \"http\",\n            \"port\": 3000,\n            \"protocol\": \"TCP\",\n            \"targetPort\": \"http\"\n          }\n        ],\n        \"selector\": {\n          \"app\": \"myapp\",\n          \"component\": \"jobscheduler\"\n        }\n      }\n    }\n  ]\n}\n"
 
@@ -370,9 +368,7 @@ The input is an Attrset of:
 ====
 [source,nix]
 ----
-outDir = yamlToMultiJsonFiles { yamlContent = builtins.readFile ./services.yml; }
-
-builtins.attrNames (builtins.readDir outDir)
+builtins.attrNames (builtins.readDir ( yamlToMultiJsonFiles { yamlContent = builtins.readFile ./services.yml; } ))
 
 [
   "myapp-jobscheduler-service-myapp.json"
@@ -430,9 +426,8 @@ yamlToMultiJsonFiles :: Attrset{ yamlContent, yqExpression ? null } -> [String]
 ====
 [source,nix]
 ----
-absPaths = yamlToMultiJsonFilePaths { yamlContent = builtins.readFile ./services.yml; }
+yamlToMultiJsonFilePaths { yamlContent = builtins.readFile ./services.yml; }
 
-absPaths
 [
   "/nix/store/7c6px9in1i05bl3r2j9jym564vhhpzs0-yaml2multijsonfile/myapp-jobscheduler-service-myapp.json"
   "/nix/store/7c6px9in1i05bl3r2j9jym564vhhpzs0-yaml2multijsonfile/myapp-service-myapp.json"
@@ -474,7 +469,7 @@ yamlToNix :: String -> Attrset / [Attrset]
 ====
 [source,nix]
 ----
-:p klib.yamlToNix (builtins.readFile ./server-cert.yml)
+yamlToNix (builtins.readFile ./server-cert.yml)
 
 {
   apiVersion = "cert-manager.io/v1";
@@ -495,7 +490,7 @@ yamlToNix :: String -> Attrset / [Attrset]
 }
 
 
-:p yamlToNix (builtins.readFile ./services.yml)
+yamlToNix (builtins.readFile ./services.yml)
 
 [
   {
@@ -591,7 +586,7 @@ yamlToNix :: String -> [Attrset]
 ====
 [source,nix]
 ----
-:p yamlToNixList (builtins.readFile ./server-cert.yml)
+yamlToNixList (builtins.readFile ./server-cert.yml)
 
 [
   {
@@ -631,3 +626,292 @@ yamlToNix :: String -> [Attrset]
 ----
 ====
 
+
+=== `nixToYaml`
+Converts Nix code to YAML string.  It does store data in the [.underline]#*nix store*#.
+
+[source,haskell]
+----
+nixToYaml :: Attrset -> String
+----
+
+.example
+[%collapsible]
+====
+[source,nix]
+----
+builtins.readFile (nixToYaml { a = 1; b = 2; c = 3; })
+"a: 1\nb: 2\nc: 3\n"
+
+builtins.readFile (nixToYaml [{ a = 1;} { b = 2;} {c = 3;}])
+"- a: 1\n- b: 2\n- c: 3\n"
+----
+====
+
+.implementation
+[%collapsible]
+====
+[source,nix]
+----
+{
+  nixToYaml =
+    attrs:
+    let
+      jsonContent = toJSON attrs;
+    in
+    pkgs.stdenv.mkDerivation {
+      inherit jsonContent;
+      name = "nixtoYaml";
+      passAsFile = [ "jsonContent" ];
+      phases = [ "buildPhase" ];
+      buildPhase = "${pkgs.yq-go}/bin/yq -p json -o yaml $jsonContentPath > $out";
+    };
+}
+----
+====
+
+
+=== `jsonToYaml`
+Converts JSON content to YAML. It does store data in the [.underline]#*nix store*#.
+
+[source,haskell]
+----
+jsonToYaml :: Attrset { jsonContent, topLevelKey ? null } -> String
+----
+
+The input is an Attrset of:
+
+* *jsonContent*: JSON string data.
+* *topLevelKey*: by default a JSON array is converted to a bare YAML array. This allows you to turn it into an object specifying the key the array should be put under. It's *ineffective if the content is not a list*.
+
+.example
+[%collapsible]
+====
+[source,nix]
+----
+jsonToYaml { jsonContent = builtins.readFile ./services.json; topLevelKey = "services"; }
+
+"services:\n  - apiVersion: v1\n    kind: Service\n    metadata:\n      name: myapp\n      namespace: myapp\n      labels:\n        app: myapp\n        component: main\n    spec:\n      ports:\n        - name: http\n          port: 80\n          protocol: TCP\n          targetPort: http\n        - name: https\n          port: 443\n          protocol: TCP\n          targetPort: https\n      selector:\n        app: myapp\n        components: main\n  - apiVersion: v1\n    kind: Service\n    metadata:\n      name: myapp-jobscheduler\n      namespace: myapp\n      labels:\n        app: myapp\n        component: jobscheduler\n    spec:\n      ports:\n        - name: http\n          port: 3000\n          protocol: TCP\n          targetPort: http\n      selector:\n        app: myapp\n        component: jobscheduler\n"
+----
+====
+
+.implementation
+[%collapsible]
+====
+[source,nix]
+----
+{
+  jsonToYaml =
+    {
+      jsonContent,
+      topLevelKey ? null
+    }@args:
+    readFile ( kallPackage args jsonToYamlFile { } );
+}
+----
+====
+
+
+
+=== `jsonToYamlFile`
+Same as jsonToYaml but stores the YAML content in a file.  It does store data in the [.underline]#*nix store*#.
+
+[source,haskell]
+----
+jsonToYamlFile :: Attrset { jsonContent, topLevelKey ? null } -> Derivation
+----
+
+.example
+[%collapsible]
+====
+[source,nix]
+----
+builtins.readFile (jsonToYamlFile { jsonContent = builtins.readFile ./server-cert.json; topLevelKey = "services";})
+
+----
+====
+
+.implementation
+[%collapsible]
+====
+[source,nix]
+----
+{
+  jsonToYamlFile =
+    {
+      jsonContent,
+      topLevelKey ? null,
+    }:
+    pkgs.stdenv.mkDerivation rec {
+      name = "json2yaml";
+      inherit jsonContent topLevelKey;
+      passAsFile = [ "jsonContent" ];
+      phases = [ "installPhase" ];
+      yqTransform = if topLevelKey != null && jsonIsList jsonContent then "--expression '{ \"${topLevelKey}\":. }'" else "";
+      installPhase = "${pkgs.yq-go}/bin/yq $jsonContentPath -p json -o yaml ${yqTransform} > $out";
+    };
+}
+----
+====
+
+
+=== `jsonFileToYamlFile`
+Same as jsonToYamlFile but automatically reads from a path. It does store data in the [.underline]#*nix store*#.
+
+[source,haskell]
+----
+jsonFileToYamlFile :: Attrset { path, topLevelKey ? null } -> Derivation
+----
+
+.example
+[%collapsible]
+====
+[source,nix]
+----
+builtins.readFile (jsonFileToYamlFile { path = ./services.json; topLevelKey = "services"; })
+"services:\n  - apiVersion: v1\n    kind: Service\n    metadata:\n      name: myapp\n      namespace: myapp\n      labels:\n        app: myapp\n        component: main\n    spec:\n      ports:\n        - name: http\n          port: 80\n          protocol: TCP\n          targetPort: http\n        - name: https\n          port: 443\n          protocol: TCP\n          targetPort: https\n      selector:\n        app: myapp\n        components: main\n  - apiVersion: v1\n    kind: Service\n    metadata:\n      name: myapp-jobscheduler\n      namespace: myapp\n      labels:\n        app: myapp\n        component: jobscheduler\n    spec:\n      ports:\n        - name: http\n          port: 3000\n          protocol: TCP\n          targetPort: http\n      selector:\n        app: myapp\n        component: jobscheduler\n"
+----
+====
+
+.implementation
+[%collapsible]
+====
+[source,nix]
+----
+{
+  jsonFileToYamlFile =
+    { path, topLevelKey ? null }@args:
+    kallPackage args jsonToYamlFile { jsonContent = builtins.readFile path; };
+}
+----
+====
+
+
+
+
+
+=== `yamlFileToJson`
+Same as yamlToJson but with a path as an input, reading the file is handled internally. It does store data in the [.underline]#*nix store*#.
+
+[source,haskell]
+----
+yamlFileToJson :: Attrset { path, outputType ? "array" } -> String
+----
+
+.example
+[%collapsible]
+====
+[source,nix]
+----
+yamlFileToJson { path = ./services.yml; outputType = "object"; }
+
+"{\n  \"items\": [\n    {\n      \"apiVersion\": \"v1\",\n      \"kind\": \"Service\",\n      \"metadata\": {\n        \"name\": \"myapp\",\n        \"namespace\": \"myapp\",\n        \"labels\": {\n          \"app\": \"myapp\",\n          \"component\": \"main\"\n        }\n      },\n      \"spec\": {\n        \"ports\": [\n          {\n            \"name\": \"http\",\n            \"port\": 80,\n            \"protocol\": \"TCP\",\n            \"targetPort\": \"http\"\n          },\n          {\n            \"name\": \"https\",\n            \"port\": 443,\n            \"protocol\": \"TCP\",\n            \"targetPort\": \"https\"\n          }\n        ],\n        \"selector\": {\n          \"app\": \"myapp\",\n          \"components\": \"main\"\n        }\n      }\n    },\n    {\n      \"apiVersion\": \"v1\",\n      \"kind\": \"Service\",\n      \"metadata\": {\n        \"name\": \"myapp-jobscheduler\",\n        \"namespace\": \"myapp\",\n        \"labels\": {\n          \"app\": \"myapp\",\n          \"component\": \"jobscheduler\"\n        }\n      },\n      \"spec\": {\n        \"ports\": [\n          {\n            \"name\": \"http\",\n            \"port\": 3000,\n            \"protocol\": \"TCP\",\n            \"targetPort\": \"http\"\n          }\n        ],\n        \"selector\": {\n          \"app\": \"myapp\",\n          \"component\": \"jobscheduler\"\n        }\n      }\n    }\n  ]\n}\n"
+----
+====
+
+.implementation
+[%collapsible]
+====
+[source,nix]
+----
+{
+  yamlFileToJson =
+    {
+      path,
+      outputType ? "array",
+    }@args:
+    callWithYamlContent args yamlToJson;
+}
+----
+====
+
+=== `yamlFileToJsonFile`
+Same as yamlToJsonFile but with a path as an input, reading the file is handled internally. It does store data in the [.underline]#*nix store*#.
+
+[source,haskell]
+----
+yamlFileToJsonFile :: Attrset { path, outputType ? "array" } -> Derivation
+----
+
+.implementation
+[%collapsible]
+====
+[source,nix]
+----
+{
+  yamlFileToJsonFile =
+    {
+      path,
+      outputType ? "array",
+    }@args:
+    callWithYamlContent args yamlToJsonFile;
+}
+----
+====
+
+
+
+=== `yamlFileToMultiJsonFiles`
+Same as yamlToMultiJsonFiles but with a path as an input, reading the file is handled internally. It does store data in the [.underline]#*nix store*#.
+
+[source,haskell]
+----
+yamlFileToMultiJsonFiles :: Attrset { path, yqExpression ? null } -> Derivation
+----
+
+.implementation
+[%collapsible]
+====
+[source,nix]
+----
+{
+  yamlFileToMultiJsonFiles =
+    {
+      path,
+      yqExpression ? null,
+    }@args:
+    callWithYamlContent args yamlToMultiJsonFiles;
+}
+----
+====
+
+
+=== `yamlFileToNix`
+Same as yamlToNix but with a path as an input, reading the file is handled internally. It does store data in the [.underline]#*nix store*#.
+
+[source,haskell]
+----
+yamlFileToNix :: String -> Attrset / [Attrset]
+----
+
+.implementation
+[%collapsible]
+====
+[source,nix]
+----
+{
+  yamlFileToNix = path: readPathAndThen path yamlToNix;
+}
+----
+====
+
+
+
+=== `yamlFileToNixList`
+Same as yamToNixList but with a path as an input, reading the file is handled internally. It does store data in the [.underline]#*nix store*#.
+
+[source,haskell]
+----
+yamlFileToNix :: String -> [Attrset]
+----
+
+.implementation
+[%collapsible]
+====
+[source,nix]
+----
+{
+  yamlFileToNixList = path: readPathAndThen path yamlToNixList;
+}
+----
+====
