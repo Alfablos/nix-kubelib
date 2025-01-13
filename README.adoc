@@ -1,10 +1,10 @@
 = Kubelib: Nix utilities for Kubernetes
 
-Inspired by https://github.com/farcaller/nix-kube-generators.
+Inspired by https://github.com/farcaller/nix-kube-generators[farcaller/nix-kube-generators].
 
 A set of tools to handle Kubernetes related resources.
 
-WARNING: this library makes use of https://github.com/mikefarah/yq[github:mikefarah/yq], *NOT* https://github.com/kislyuk/yq[github:kislyuk/yq]! Keep it in mind while troubleshooting.
+WARNING: this library makes use of https://github.com/mikefarah/yq[mikefarah/yq], *NOT* https://github.com/kislyuk/yq[kislyuk/yq]! Keep it in mind while troubleshooting.
 
 Many are convenience wrappers around others.
 
@@ -18,26 +18,24 @@ The library has 2 main focuses: one is handling YAML, JSON and Nix conversions, 
 |===
 | Input type | YAML | JSON | JSON file | Multiple JSON files | Nix | Nix List
 
-| YAML content (1 object) | - |  `yamlToJson` |  `yamlToJsonFile` |  `yamlToMultiJsonFiles` |  `yamlToNix` |  `yamlToNix`
+| YAML content (1 object) | - | `yamlToJson` | `yamlToJsonFile` | `yamlToMultiJsonFiles` | `yamlToNix` | `yamlToNix`
 
-| YAML content (multiple objects) | - |  `yamlToJson` |  `yamlToJsonFile`|  `yamlToMultiJsonFiles` |  `yamlToNix` |  `yamlToNixList`
+| YAML content (multiple objects) | - | `yamlToJson` | `yamlToJsonFile` | `yamlToMultiJsonFiles` | `yamlToNix` | `yamlToNixList`
 
-| YAML file (single object) | - |  `yamlFileToJson` |   `yamlFileToJsonFile` |  `yamlFileToMultiJsonFiles` |  `yamlFileToNix` |  `yamlFileToNixList`
+| YAML file (single object) | - | `yamlFileToJson` | `yamlFileToJsonFile` | `yamlFileToMultiJsonFiles` | `yamlFileToNix` | `yamlFileToNixList`
 
-| YAML file (multiple objects) | - |  `yamlFileToJson` |  `yamlToJsonFile`|  `yamlToMultiJsonFiles` |  `yamlFileToNix` |  `yamlFileToNixList`
+| YAML file (multiple objects) | - | `yamlFileToJson` | `yamlToJsonFile`| `yamlToMultiJsonFiles` | `yamlFileToNix` | `yamlFileToNixList`
 
-| Nix |  `nixToYaml` | _builtin_ | _builtin_ | *no* | - | -
+| Nix | `nixToYaml` | _builtin_ | _builtin_ | *no* | - | -
 
-| JSON content |  `jsonToYamlFile` (YAML file) | - | - | *no* | _builtin_ | _builtin_
+| JSON content | `jsonToYamlFile` (YAML file) | - | - | *no* | _builtin_ | _builtin_
 
-| JSON file |  `jsonFileToYamlFile` (YAML file) | - | - | *no* | _builtin_ | _builtin_
-
+| JSON file | `jsonFileToYamlFile` (YAML file) | - | - | *no* | _builtin_ | _builtin_
 |===
 
 .Additional utils
 [cols="1,4"]
 |===
-
 | `toList` | Turns a Nix list into the Nix equivalent of a Kubernetes resource list (kind: List).
 
 | `keyValFromJsonManifest` |   Takes a JSON kubernetes manifests and builds a key-value pair
