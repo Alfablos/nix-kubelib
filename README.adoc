@@ -2,5 +2,97 @@
 
 Inspired by https://github.com/farcaller/nix-kube-generators.
 
-A set of tools to handle Helm resources.
+A set of tools to handle Kubernetes related resources.
 
+
+== Lib
+The library has 2 main focuses: one is handling YAML, JSON and Nix conversions, while the other is managing Helm Charts.
+
+=== YAML Lib
+.`-`: self type, `builtin`: builtin in Nix
+[cols="1,1,1,1,1,1,1"]
+|===
+| Input type | YAML | JSON | JSON file | Multiple JSON files | Nix | Nix List
+
+| YAML content (1 object) | - | yes: `yamlToJson` | yes: `yamlToJsonFile` | yes: `yamlToMultiJsonFiles` | yes: `yamlToNix` | yes: `yamlToNix`
+
+| YAML content (multiple objects) | - | yes: `yamlToJson` | yes: `yamlToJsonFile`| yes: `yamlToMultiJsonFiles` | yes: `yamlToNix` | yes: `yamlToNixList`
+
+| YAML file (single object) | - | yes: `yamlFileToJson` | yes:  `yamlFileToJsonFile` | yes: `yamlFileToMultiJsonFiles` | yes: `yamlFileToNix` | yes: `yamlFileToNixList`
+
+| YAML file (multiple objects) | - | yes: `yamlFileToJson` | yes: `yamlToJsonFile`| yes: `yamlToMultiJsonFiles` | yes: `yamlFileToNix` | yes: `yamlFileToNixList`
+
+| Nix | yes: `nixToYaml` | _builtin_ | _builtin_ | *no* | - | -
+
+| JSON content | yes: `jsonToYamlFile` (YAML file) | - | - | *no* | _builtin_ | _builtin_
+
+| JSON file | yes: `jsonFileToYamlFile` (YAML file) | - | - | *no* | _builtin_ | _builtin_
+
+|===
+
+.Additional utils
+[cols="1,4"]
+|===
+
+| `toList` | Turns a Nix list into the Nix equivalent of a Kubernetes resource list (kind: List)
+
+| `keyValFromJsonResource` |   Takes a JSON kubernetes manifests and builds a key-value pair
+from the manifest.
+
+- The VALUE is the content of the file itself
+
+- The KEY is the string interpolation of resource name, resource kind
+and resource namespace. In case of a non-namespaced resource, the kind is repeated
+
+| `keyValFromJsonResources` | Same as kkeyValFromJsonResource but deals with list of resources
+
+
+|===
+
+
+=== Helm lib
+
+* *downloadHelmChart*
+* *buildHelmChart*
+
+
+== Lib Functions
+
+=== `toList`
+Turns a Nix list into the Nix equivalent of a Kubernetes resource list (kind: List)
+
+[source,haskell]
+----
+toList :: [a] -> kubernetes::List a
+----
+
+.example
+[%collapsible%open%]
+====
+[source,nix]
+----
+toList [ { a = "some"; b = "data"; } { a = "some"; b = "other"; c = "data"; } ]
+{
+  apiVersion = "v1";
+  items = [
+    {
+      a = "some";
+      b = "data";
+    }
+    {
+      a = "some";
+      b = "other";
+      c = "data";
+    }
+  ];
+  kind = "List";
+}
+----
+====
+
+=== `keyValFromJsonResource`
+Takes a JSON kubernetes manifests and builds a key-value pair from the manifest.
+
+- The VALUE is the content of the file itself
+
+- The KEY is the string interpolation of resource name, resource kind and resource namespace. In case of a non-namespaced resource, the kind is repeated

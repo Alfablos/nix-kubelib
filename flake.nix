@@ -16,5 +16,9 @@
       packages.x86_64-linux.test = kubelib.yamlToMultiJsonFiles {
         yamlContent = builtins.readFile ./single.yml;
       };
+      devShells.${system}.default = pkgs.mkShell {
+        buildInputs = with pkgs; [ yq-go ];
+
+      };
     };
 }

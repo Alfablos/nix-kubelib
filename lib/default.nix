@@ -11,8 +11,7 @@ let
 
   readPathAndThen = path: f: f (readFile path);
 
-  callWithYamlContent =
-    { ... }@args: f: kallPackage args f { yamlContent = readFile args.path; };
+  callWithYamlContent = { ... }@args: f: kallPackage args f { yamlContent = readFile args.path; };
 
   getGeneratedFiles =
     with builtins;
@@ -53,23 +52,32 @@ rec {
   # - The VALUE is the content of the file itself
   # - The KEY is the string interpolation of resource name, resource kind
   #   and resource namespace. In case of a non-namespaced resource, the kind is repeated
-  keyValFromJsonResource =
-    path:
+  keyValFromJsonManifest =
+    input:
     let
-      content = fromJSON (readFile path);
-      name = content.metadata.name;
-      kind = lib.strings.toLower content.kind;
-      third = content.metadata.namespace or kind;
-    in
-    {
-      "${name}-${kind}-${third}" = content;
-    };
+      nixData = fromJSON input;
+      process =
+        c:
+        let
+          name = c.metadata.name;
+          kind = lib.strings.toLower c.kind;
+          third = c.metadata.namespace or kind;
+        in
+        {
+          "${name}-${kind}-${third}" = toJSON c;
+        };
 
-  # Same as kkeyValFromJsonResource but deals with list of resources
-  keyValFromJsonResources =
+      f =
+        nixContent: if isList nixContent then map (cont: process cont) nixContent else process nixContent;
+    in
+    f nixData;
+
+  keyValFromJsonManifestFile = path: readPathAndThen path keyValFromJsonManifest;
+  # Same as kkeyValFromJsonManifest but deals with list of resources
+  keyValFromJsonManifestFiles =
     paths:
     let
-      list = map (p: keyValFromJsonResource p) paths;
+      list = map (p: keyValFromJsonManifestFile p) paths;
     in
     lib.attrsets.mergeAttrsList list;
 
@@ -141,7 +149,9 @@ rec {
       inherit yamlContent yqExpression;
     });
 
-  # Converts YAML array content to a Nix list.
+  # Converts YAML content to a Nix list forcing the output to be a list.
+  # So even if a single object is passed the result will be a Nix list
+  # with a single Attrset in it.
   yamlToNixList =
     yamlContent:
     let
@@ -155,12 +165,18 @@ rec {
       yamlContent,
       outputType ? null,
     }@args:
-    let f = kallPackage args yamlToJsonFile {};
+    let
+      f = kallPackage args yamlToJsonFile { };
     in
     readFile f;
 
-  # Converts YAML content to Nix.
-  yamlToNix = yamlContent: fromJSON (yamlToJson yamlContent);
+  # Converts YAML content (object or list) to Nix. Evaluates to a list anyway if the
+  # input is a list of objects.
+  yamlToNix =
+    yamlContent:
+    fromJSON (yamlToJson {
+      inherit yamlContent;
+    });
 
   # Same as yamlToJson but for reading files directly.
   yamlFileToJson =
@@ -204,4 +220,22 @@ rec {
       phases = [ "buildPhase" ];
       buildPhase = "${pkgs.yq-go}/bin/yq -p json -o yaml $jsonContentPath > $out";
     };
+
+  jsonToYamlFile =
+    {
+      jsonContent,
+      topLevelKey ? null,
+    }:
+    pkgs.stdenv.mkDerivation rec {
+      name = "json2yaml";
+      inherit jsonContent topLevelKey;
+      passAsFile = [ "jsonContent" ];
+      phases = [ "installPhase" ];
+      yqTransform = if topLevelKey != null then "--expression '{ \"${topLevelKey}\":. }'" else "";
+      installPhase = "${pkgs.yq-go}/bin/yq $jsonContentPath -p json -o yaml ${yqTransform} > $out";
+    };
+
+  jsonFileToYamlFile =
+    { path, topLevelKey }@args:
+    kallPackage args jsonToYamlFile { jsonContent = builtins.readFile path; };
 }
