@@ -28,9 +28,9 @@ The library has 2 main focuses: one is handling YAML, JSON and Nix conversions, 
 
 | Nix | `nixToYaml` | _builtin_ | _builtin_ | *no* | - | -
 
-| JSON content | `jsonToYamlFile` (YAML file) | - | - | *no* | _builtin_ | _builtin_
+| JSON content | `jsonToYaml` `jsonToYamlFile` | - | - | *no* | _builtin_ | _builtin_
 
-| JSON file | `jsonFileToYamlFile` (YAML file) | - | - | *no* | _builtin_ | _builtin_
+| JSON file | `jsonFileToYamlFile` | - | - | *no* | _builtin_ | _builtin_
 |===
 
 .Additional utils
@@ -107,6 +107,7 @@ toList [ { a = "some"; b = "data"; } { a = "some"; b = "other"; c = "data"; } ]
 ----
 ====
 
+'''
 
 === `keyValFromJsonManifest`
 Takes a JSON kubernetes manifest `content` and builds a key-value pair from the manifest.
@@ -170,14 +171,26 @@ keyValFromJsonManifest (yamlToJson { yamlContent = builtins.readFile ./services.
 ----
 ====
 
+'''
+
 === `keyValFromJsonManifestFile`
 Same as keyValFromJsonManifest but accespts a `path` instead of content.
 
 [source,haskell]
 ----
-keyValFromJsonManifestFile :: p -> Attrset || [Attrset]
+keyValFromJsonManifestFile :: p -> Attrset / [Attrset]
 ----
 
+
+.example
+[%collapsible]
+====
+[source,nix]
+----
+keyValFromJsonManifestFile ./server-cert.json
+{ mypp-serverauth-certificate-myapp = "{\"apiVersion\":\"cert-manager.io/v1\",\"kind\":\"Certificate\",\"metadata\":{\"name\":\"mypp-serverauth\",\"namespace\":\"myapp\"},\"spec\":{\"dnsNames\":[\"myapp.mydomain.com\"],\"issuerRef\":{\"kind\":\"ClusterIssuer\",\"name\":\"letsencrypt-dns\"},\"secretName\":\"myapp-server-tls\",\"usages\":[\"server auth\"]}}"; }
+----
+====
 
 .implementation
 [%collapsible]
@@ -190,14 +203,31 @@ keyValFromJsonManifestFile :: p -> Attrset || [Attrset]
 ----
 ====
 
+'''
+
 === `keyValFromJsonManifestFiles`
-Same as keyValFromJsonManifestFile but deals with Lists of `paths`.
+Same as keyValFromJsonManifestFile but deals with Lists of `paths`.+
+It supports paths to files with multiple objects within.
 
 [source,haskell]
 ----
 keyValFromJsonManifestFiles :: [p] -> [Attrset]
 ----
 
+.example
+[%collapsible]
+====
+[source,nix]
+----
+keyValFromJsonManifestFiles [ ./server-cert.json ./services.json ]
+{
+  myapp-jobscheduler-service-myapp = "{\"apiVersion\":\"v1\",\"kind\":\"Service\",\"metadata\":{\"labels\":{\"app\":\"myapp\",\"component\":\"jobscheduler\"},\"name\":\"myapp-jobscheduler\",\"namespace\":\"myapp\"},\"spec\":{\"ports\":[{\"name\":\"http\",\"port\":3000,\"protocol\":\"TCP\",\"targetPort\":\"http\"}],\"selector\":{\"app\":\"myapp\",\"component\":\"jobscheduler\"}}}";
+  myapp-service-myapp = "{\"apiVersion\":\"v1\",\"kind\":\"Service\",\"metadata\":{\"labels\":{\"app\":\"myapp\",\"component\":\"main\"},\"name\":\"myapp\",\"namespace\":\"myapp\"},\"spec\":{\"ports\":[{\"name\":\"http\",\"port\":80,\"protocol\":\"TCP\",\"targetPort\":\"http\"},{\"name\":\"https\",\"port\":443,\"protocol\":\"TCP\",\"targetPort\":\"https\"}],\"selector\":{\"app\":\"myapp\",\"components\":\"main\"}}}";
+  mypp-serverauth-certificate-myapp = "{\"apiVersion\":\"cert-manager.io/v1\",\"kind\":\"Certificate\",\"metadata\":{\"name\":\"mypp-serverauth\",\"namespace\":\"myapp\"},\"spec\":{\"dnsNames\":[\"myapp.mydomain.com\"],\"issuerRef\":{\"kind\":\"ClusterIssuer\",\"name\":\"letsencrypt-dns\"},\"secretName\":\"myapp-server-tls\",\"usages\":[\"server auth\"]}}";
+}
+
+----
+====
 
 .implementation
 [%collapsible]
@@ -215,12 +245,14 @@ keyValFromJsonManifestFiles :: [p] -> [Attrset]
 ----
 ====
 
+'''
+
 === `yamlToJson`
 Turns input YAML `content` into JSON.
 
 [source,haskell]
 ----
-yamlToJson :: Attrset{ yamlContent, outputType ? "array" } -> String
+yamlToJson :: Attrset { yamlContent, outputType ? "array" } -> String
 ----
 
 The input is an Attrset of:
@@ -271,6 +303,8 @@ cheduler\",\n      \"namespace\": \"myapp\",\n      \"labels\": {\n        \"app
 ----
 ====
 
+'''
+
 === `yamlToJsonFile`
 Similar to yamlToJson but turns input YAML `content` into a _single_ JSON file [.underline]#*in the store*#.
 
@@ -293,7 +327,7 @@ The input is an Attrset of:
 ----
 
 
-builtins.readFile yamlToJsonFile { yamlContent = builtins.readFile ./services.yml; outputType = "object"; }        # Singe it returns a derivation
+builtins.readFile yamlToJsonFile { yamlContent = builtins.readFile ./services.yml; outputType = "object"; }        # Since it returns a derivation
 
 "{\n  \"items\": [\n    {\n      \"apiVersion\": \"v1\",\n      \"kind\": \"Service\",\n      \"metadata\": {\n        \"name\": \"myapp\",\n        \"namespace\": \"myapp\",\n        \"labels\": {\n          \"app\": \"myapp\",\n          \"component\": \"main\"\n        }\n      },\n      \"spec\": {\n        \"ports\": [\n          {\n            \"name\": \"http\",\n            \"port\": 80,\n            \"protocol\": \"TCP\",\n            \"targetPort\": \"http\"\n          },\n          {\n            \"name\": \"https\",\n            \"port\": 443,\n            \"protocol\": \"TCP\",\n            \"targetPort\": \"https\"\n          }\n        ],\n        \"selector\": {\n          \"app\": \"myapp\",\n          \"components\": \"main\"\n        }\n      }\n    },\n    {\n      \"apiVersion\": \"v1\",\n      \"kind\": \"Service\",\n      \"metadata\": {\n        \"name\": \"myapp-jobscheduler\",\n        \"namespace\": \"myapp\",\n        \"labels\": {\n          \"app\": \"myapp\",\n          \"component\": \"jobscheduler\"\n        }\n      },\n      \"spec\": {\n        \"ports\": [\n          {\n            \"name\": \"http\",\n            \"port\": 3000,\n            \"protocol\": \"TCP\",\n            \"targetPort\": \"http\"\n          }\n        ],\n        \"selector\": {\n          \"app\": \"myapp\",\n          \"component\": \"jobscheduler\"\n        }\n      }\n    }\n  ]\n}\n"
 
@@ -330,11 +364,11 @@ builtins.readFile yamlToJsonFile { yamlContent = builtins.readFile ./services.ym
       phases = [ "installPhase" ];
       installPhase = "${pkgs.yq-go}/bin/yq $yamlContentPath -p yaml -o json | ${jqCommand} > $out";
     };
-
 }
 ----
 ====
 
+'''
 
 === `yamlToMultiJsonFiles`
 The purpose of this function is to automate the creation of a set of files compatible with the https://github.com/kubernetes/kubernetes/blob/master/cluster/addons/addon-manager/README.md[Kubernetes AddonManager] which is the https://github.com/NixOS/nixpkgs/blob/046eee4ec50a7b86148b056d6ddb44c4fc9a6a15/nixos/modules/services/cluster/kubernetes/addon-manager.nix#L27[default way of installing addons if you're running Kubernetes bare metal on NixOS].
@@ -359,6 +393,7 @@ The input is an Attrset of:
 
 * *yamlContent*: YAML content as string
 * *yqExpression*: yqExpression override in case you want a different naming.
+
 
 
 .example
@@ -409,6 +444,8 @@ builtins.attrNames (builtins.readDir ( yamlToMultiJsonFiles { yamlContent = buil
 ----
 ====
 
+'''
+
 === `yamlToMultiJsonFilePaths`
 It turns some YAML content describing ONE OR MORE Kubernetes resources into as many JSON manifests as resources described. The return value is a list of [.underline]#*store path*# containing built files.
 
@@ -453,6 +490,7 @@ yamlToMultiJsonFilePaths { yamlContent = builtins.readFile ./services.yml; }
 ----
 ====
 
+'''
 
 === `yamlToNix`
 Loads parses YAML definitions into Nix language. It does store data in the [.underline]#*nix store*#.
@@ -569,7 +607,7 @@ yamlToNix (builtins.readFile ./services.yml)
 ----
 ====
 
-
+'''
 
 === `yamlToNixList`
 Same as yamlToNix but forces the output to be a List. It does store data in the [.underline]#*nix store*#.
@@ -624,6 +662,7 @@ yamlToNixList (builtins.readFile ./server-cert.yml)
 ----
 ====
 
+'''
 
 === `nixToYaml`
 Converts Nix code to YAML string.  It does store data in the [.underline]#*nix store*#.
@@ -668,6 +707,7 @@ builtins.readFile (nixToYaml [{ a = 1;} { b = 2;} {c = 3;}])
 ----
 ====
 
+'''
 
 === `jsonToYaml`
 Converts JSON content to YAML. It does store data in the [.underline]#*nix store*#.
@@ -709,7 +749,7 @@ jsonToYaml { jsonContent = builtins.readFile ./services.json; topLevelKey = "ser
 ----
 ====
 
-
+'''
 
 === `jsonToYamlFile`
 Same as jsonToYaml but stores the YAML content in a file.  It does store data in the [.underline]#*nix store*#.
@@ -752,6 +792,7 @@ builtins.readFile (jsonToYamlFile { jsonContent = builtins.readFile ./server-cer
 ----
 ====
 
+'''
 
 === `jsonFileToYamlFile`
 Same as jsonToYamlFile but automatically reads from a path. It does store data in the [.underline]#*nix store*#.
@@ -784,9 +825,7 @@ builtins.readFile (jsonFileToYamlFile { path = ./services.json; topLevelKey = "s
 ----
 ====
 
-
-
-
+'''
 
 === `yamlFileToJson`
 Same as yamlToJson but with a path as an input, reading the file is handled internally. It does store data in the [.underline]#*nix store*#.
@@ -823,6 +862,8 @@ yamlFileToJson { path = ./services.yml; outputType = "object"; }
 ----
 ====
 
+'''
+
 === `yamlFileToJsonFile`
 Same as yamlToJsonFile but with a path as an input, reading the file is handled internally. It does store data in the [.underline]#*nix store*#.
 
@@ -847,7 +888,7 @@ yamlFileToJsonFile :: Attrset { path, outputType ? "array" } -> Derivation
 ----
 ====
 
-
+'''
 
 === `yamlFileToMultiJsonFiles`
 Same as yamlToMultiJsonFiles but with a path as an input, reading the file is handled internally. It does store data in the [.underline]#*nix store*#.
@@ -873,6 +914,7 @@ yamlFileToMultiJsonFiles :: Attrset { path, yqExpression ? null } -> Derivation
 ----
 ====
 
+'''
 
 === `yamlFileToNix`
 Same as yamlToNix but with a path as an input, reading the file is handled internally. It does store data in the [.underline]#*nix store*#.
@@ -893,7 +935,7 @@ yamlFileToNix :: String -> Attrset / [Attrset]
 ----
 ====
 
-
+'''
 
 === `yamlFileToNixList`
 Same as yamToNixList but with a path as an input, reading the file is handled internally. It does store data in the [.underline]#*nix store*#.

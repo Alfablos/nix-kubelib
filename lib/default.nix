@@ -81,9 +81,9 @@ rec {
   keyValFromJsonManifestFiles =
     paths:
     let
-      list = map (p: keyValFromJsonManifestFile p) paths;
+      pathList = map (p: keyValFromJsonManifestFile p) paths;
     in
-    lib.attrsets.mergeAttrsList list;
+    lib.attrsets.mergeAttrsList (lib.lists.flatten pathList);
 
   # Turns some YAML content describing ONE OR MORE kubernetes resources
   # into a SINGLE JSON file in the store.
