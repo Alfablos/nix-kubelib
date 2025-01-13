@@ -2,11 +2,13 @@
 
 Inspired by https://github.com/farcaller/nix-kube-generators[farcaller/nix-kube-generators].
 
-A set of tools to handle Kubernetes related resources.
+A set of tools to handle Kubernetes related resources and Nix, JSON and YAML conversions.
 
 WARNING: this library makes use of https://github.com/mikefarah/yq[mikefarah/yq], *NOT* https://github.com/kislyuk/yq[kislyuk/yq]! Keep it in mind while troubleshooting.
 
-Many are convenience wrappers around others.
+CAUTION: Many functions will [.underline]#*copy data to the Nix store*#
+
+Some functions are convenience wrappers around others, so you can keep the code cleaner.
 
 
 == Lib
@@ -49,6 +51,38 @@ and resource namespace. In case of a non-namespaced resource, the kind is repeat
 | `keyValFromJsonManifestFiles` | Sane as keyValFromJsonManifest but allows multiple paths as input.
 
 |===
+
+[.underline]#*From YAML*# functions:
+
+* <<_yamlfiletojson,`yamlFileToJson`>>
+* <<_yamlfiletojsonfile,`yamlFileToJsonFile`>>
+* <<_yamlfiletomultijsonfiles,`yamlFileToMultiJsonFiles`>>
+* <<_yamlfiletonix,`yamlFileToNix`>>
+* <<_yamlfiletonixlist,`yamlFileToNixList`>>
+* <<_yamltojson,`yamlToJson`>>
+* <<_yamltojsonfile,`yamlToJsonFile`>>
+* <<_yamltomultijsonfilepaths,`yamlToMultiJsonFilePaths`>>
+* <<_yamltomultijsonfiles,`yamlToMultiJsonFiles`>>
+* <<_yamltonix,`yamlToNix`>>
+* <<_yamltonixlist,`yamlToNixList`>>
+
+[.underline]#*From JSON* functinos:
+
+* <<_jsonfiletoyamlfile,`jsonFileToYamlFile`>>
+* <<_jsontoyaml,`jsonToYaml`>>
+* <<_jsontoyamlfile,`jsonToYamlFile`>>
+* <<_keyvalfromjsonmanifest,`keyValFromJsonManifest`>>
+* <<_keyvalfromjsonmanifestfile,`keyValFromJsonManifestFile`>>
+* <<_keyvalfromjsonmanifestfiles,`keyValFromJsonManifestFiles`>>
+
+[.underline]#*From Nix*# functions:
+
+* <<_nixtoyaml,`nixToYaml`>>
+
+[.underline]#*Others*#:
+
+* <<_tolist,`toList`>>
+
 
 
 === Helm lib
@@ -240,7 +274,7 @@ keyValFromJsonManifestFiles [ ./server-cert.json ./services.json ]
     let
       list = map (p: keyValFromJsonManifestFile p) paths;
     in
-    lib.attrsets.mergeAttrsList list;
+    lib.attrsets.mergeAttrsList (lib.lists.flatten pathList);
 }
 ----
 ====
@@ -765,7 +799,7 @@ jsonToYamlFile :: Attrset { jsonContent, topLevelKey ? null } -> Derivation
 [source,nix]
 ----
 builtins.readFile (jsonToYamlFile { jsonContent = builtins.readFile ./server-cert.json; topLevelKey = "services";})
-
+"apiVersion: cert-manager.io/v1\nkind: Certificate\nmetadata:\n  name: mypp-serverauth\n  namespace: myapp\nspec:\n  issuerRef:\n    kind: ClusterIssuer\n    name: letsencrypt-dns\n  secretName: myapp-server-tls\n  usages:\n    - server auth\n  dnsNames:\n    - myapp.mydomain.com\n"
 ----
 ====
 
@@ -827,6 +861,7 @@ builtins.readFile (jsonFileToYamlFile { path = ./services.json; topLevelKey = "s
 
 '''
 
+[yamlFileToJson]
 === `yamlFileToJson`
 Same as yamlToJson but with a path as an input, reading the file is handled internally. It does store data in the [.underline]#*nix store*#.
 
@@ -872,6 +907,16 @@ Same as yamlToJsonFile but with a path as an input, reading the file is handled 
 yamlFileToJsonFile :: Attrset { path, outputType ? "array" } -> Derivation
 ----
 
+.example
+[%collapsible]
+====
+[source,nix]
+----
+builtins.readFile (klib.yamlFileToJsonFile { path = ./services.yml; })
+"[\n  {\n    \"apiVersion\": \"v1\",\n    \"kind\": \"Service\",\n    \"metadata\": {\n      \"name\": \"myapp\",\n      \"namespace\": \"myapp\",\n      \"labels\": {\n        \"app\": \"myapp\",\n        \"component\": \"main\"\n      }\n    },\n    \"spec\": {\n      \"ports\": [\n        {\n          \"name\": \"http\",\n          \"port\": 80,\n          \"protocol\": \"TCP\",\n          \"targetPort\": \"http\"\n        },\n        {\n          \"name\": \"https\",\n          \"port\": 443,\n          \"protocol\": \"TCP\",\n          \"targetPort\": \"https\"\n        }\n      ],\n      \"selector\": {\n        \"app\": \"myapp\",\n        \"components\": \"main\"\n      }\n    }\n  },\n  {\n    \"apiVersion\": \"v1\",\n    \"kind\": \"Service\",\n    \"metadata\": {\n      \"name\": \"myapp-jobscheduler\",\n      \"namespace\": \"myapp\",\n      \"labels\": {\n        \"app\": \"myapp\",\n        \"component\": \"jobscheduler\"\n      }\n    },\n    \"spec\": {\n      \"ports\": [\n        {\n          \"name\": \"http\",\n          \"port\": 3000,\n          \"protocol\": \"TCP\",\n          \"targetPort\": \"http\"\n        }\n      ],\n      \"selector\": {\n        \"app\": \"myapp\",\n        \"component\": \"jobscheduler\"\n      }\n    }\n  }\n]\n"
+----
+====
+
 .implementation
 [%collapsible]
 ====
@@ -898,6 +943,19 @@ Same as yamlToMultiJsonFiles but with a path as an input, reading the file is ha
 yamlFileToMultiJsonFiles :: Attrset { path, yqExpression ? null } -> Derivation
 ----
 
+.example
+[%collapsible]
+====
+[source,nix]
+----
+builtins.attrNames (builtins.readDir (klib.yamlFileToMultiJsonFiles { path = ./services.yml; }))
+[
+  "myapp-jobscheduler-service-myapp.json"
+  "myapp-service-myapp.json"
+]
+----
+====
+
 .implementation
 [%collapsible]
 ====
@@ -921,8 +979,77 @@ Same as yamlToNix but with a path as an input, reading the file is handled inter
 
 [source,haskell]
 ----
-yamlFileToNix :: String -> Attrset / [Attrset]
+yamlFileToNix :: p -> Attrset / [Attrset]
 ----
+
+.example
+[%collapsible]
+====
+[source,nix]
+----
+yamlFileToNix ./services.yml
+[
+  {
+    apiVersion = "v1";
+    kind = "Service";
+    metadata = {
+      labels = {
+        app = "myapp";
+        component = "main";
+      };
+      name = "myapp";
+      namespace = "myapp";
+    };
+    spec = {
+      ports = [
+        {
+          name = "http";
+          port = 80;
+          protocol = "TCP";
+          targetPort = "http";
+        }
+        {
+          name = "https";
+          port = 443;
+          protocol = "TCP";
+          targetPort = "https";
+        }
+      ];
+      selector = {
+        app = "myapp";
+        components = "main";
+      };
+    };
+  }
+  {
+    apiVersion = "v1";
+    kind = "Service";
+    metadata = {
+      labels = {
+        app = "myapp";
+        component = "jobscheduler";
+      };
+      name = "myapp-jobscheduler";
+      namespace = "myapp";
+    };
+    spec = {
+      ports = [
+        {
+          name = "http";
+          port = 3000;
+          protocol = "TCP";
+          targetPort = "http";
+        }
+      ];
+      selector = {
+        app = "myapp";
+        component = "jobscheduler";
+      };
+    };
+  }
+]
+----
+====
 
 .implementation
 [%collapsible]
@@ -942,8 +1069,36 @@ Same as yamToNixList but with a path as an input, reading the file is handled in
 
 [source,haskell]
 ----
-yamlFileToNix :: String -> [Attrset]
+yamlFileToNix :: p -> [Attrset]
 ----
+
+.example
+[%collapsible]
+====
+[source,nix]
+----
+yamlFileToNixList ./server-cert.yml     # Only contains one cert-manager.io/v1/Certificate
+[
+  {
+    apiVersion = "cert-manager.io/v1";
+    kind = "Certificate";
+    metadata = {
+      name = "mypp-serverauth";
+      namespace = "myapp";
+    };
+    spec = {
+      dnsNames = [ "myapp.mydomain.com" ];
+      issuerRef = {
+        kind = "ClusterIssuer";
+        name = "letsencrypt-dns";
+      };
+      secretName = "myapp-server-tls";
+      usages = [ "server auth" ];
+    };
+  }
+]
+----
+====
 
 .implementation
 [%collapsible]
