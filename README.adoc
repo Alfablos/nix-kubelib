@@ -70,7 +70,7 @@ toList :: [a] -> kubernetes::List a
 ----
 
 .example
-[%collapsible%open]
+[%collapsible]
 ====
 [source,nix]
 ----
@@ -94,6 +94,22 @@ toList [ { a = "some"; b = "data"; } { a = "some"; b = "other"; c = "data"; } ]
 ----
 ====
 
+.implementation
+[%collapsible]
+====
+[source,nix]
+----
+{
+  toList = items: {
+    apiVersion = "v1";
+    kind = "List";
+    inherit items;
+  };
+}
+----
+====
+
+
 === `keyValFromJsonManifest`
 Takes a JSON kubernetes manifest `content` and builds a key-value pair from the manifest.
 
@@ -108,7 +124,7 @@ keyValFromJsonManifest: [a] -> [Attrset]
 ----
 
 .example
-[%collapsible%open]
+[%collapsible]
 ====
 [source,nix]
 ----
@@ -129,6 +145,35 @@ keyValFromJsonManifest jsonFile
 ====
 
 
+.implementation
+[%collapsible]
+====
+[source,nix]
+----
+{
+  keyValFromJsonManifest =
+    input:
+    let
+      nixData = fromJSON input;
+      process = c:
+        let
+          name = c.metadata.name;
+          kind = lib.strings.toLower c.kind;
+          third = c.metadata.namespace or kind;
+        in
+        {
+          "${name}-${kind}-${third}" = toJSON c;
+        };
+
+      f =
+        nixContent: if isList nixContent then map (cont: process cont) nixContent else process nixContent;
+    in
+    f nixData;
+
+}
+----
+====
+
 === `keyValFromJsonManifestFile`
 Same as keyValFromJsonManifest but accespts a `path` instead of content.
 
@@ -138,6 +183,17 @@ keyValFromJsonManifestFile :: p -> Attrset || [Attrset]
 ----
 
 
+.implementation
+[%collapsible]
+====
+[source,nix]
+----
+{
+  keyValFromJsonManifestFile = path: readPathAndThen path keyValFromJsonManifest;
+}
+----
+====
+
 === `keyValFromJsonManifestFiles`
 Same as keyValFromJsonManifestFile but deals with Lists of `paths`.
 
@@ -146,6 +202,22 @@ Same as keyValFromJsonManifestFile but deals with Lists of `paths`.
 keyValFromJsonManifestFiles :: [p] -> [Attrset]
 ----
 
+
+.implementation
+[%collapsible]
+====
+[source,nix]
+----
+{
+  keyValFromJsonManifestFiles =
+    paths:
+    let
+      list = map (p: keyValFromJsonManifestFile p) paths;
+    in
+    lib.attrsets.mergeAttrsList list;
+}
+----
+====
 
 === `yamlToJson`
 Turns input YAML `content` into JSON.
@@ -164,7 +236,7 @@ The input is an Attrset of:
 
 
 .example
-[%collapsible%open]
+[%collapsible]
 ====
 [source,nix]
 ----
@@ -184,6 +256,25 @@ cheduler\",\n      \"namespace\": \"myapp\",\n      \"labels\": {\n        \"app
 ----
 ====
 
+.implementation
+[%collapsible]
+====
+[source,nix]
+----
+{
+  yamlToJson =
+    {
+      yamlContent,
+      outputType ? "array",
+    }@args:
+    let
+      f = kallPackage args yamlToJsonFile { };
+    in
+    readFile f;
+}
+----
+====
+
 === `yamlToJsonFile`
 Similar to yamlToJson but turns input YAML `content` into a _single_ JSON file [.underline]#*in the store*#.
 
@@ -192,8 +283,15 @@ Similar to yamlToJson but turns input YAML `content` into a _single_ JSON file [
 yamlToJson :: Attrset{ path, outputType ? "array" } -> Derivation
 ----
 
+The input is an Attrset of:
+
+* *yamlContent*: YAML content as string
+* *outputType*, which only makes sense if you know the result will be a list:
+** _array_ (default): simple JSON array. `[ {...},{...},... ]`
+** _object_: JSON object with your data stored in the _items_ key. `{ "items": [ {...},{...},... ] }`
+
 .example
-[%collapsible%open]
+[%collapsible]
 ====
 [source,nix]
 ----
@@ -206,12 +304,40 @@ builtins.readFile jf        # Singe it returns a derivation
 ----
 ====
 
-The input is an Attrset of:
 
-* *yamlContent*: YAML content as string
-* *outputType*, which only makes sense if you know the result will be a list:
-** _array_ (default): simple JSON array. `[ {...},{...},... ]`
-** _object_: JSON object with your data stored in the _items_ key. `{ "items": [ {...},{...},... ] }`
+.implementation
+[%collapsible]
+====
+[source,nix]
+----
+{
+  yamlToJsonFile =
+    {
+      yamlContent,
+      outputType ? "array",
+    }:
+    let
+      jqReturnValue =
+        if outputType == "array" then
+          "."
+        else if outputType == "object" then
+          "{ items:. }"
+        else
+          throw "Unknown output type ${outputType}";
+
+      jqCommand = "${pkgs.jq}/bin/jq -n '[inputs] | if length == 1 then .[0] else ${jqReturnValue} end | .'";
+    in
+    pkgs.stdenv.mkDerivation {
+      name = "yaml2jsonfile";
+      inherit yamlContent;
+      passAsFile = [ "yamlContent" ];
+      phases = [ "installPhase" ];
+      installPhase = "${pkgs.yq-go}/bin/yq $yamlContentPath -p yaml -o json | ${jqCommand} > $out";
+    };
+
+}
+----
+====
 
 
 === `yamlToMultiJsonFiles`
@@ -240,7 +366,7 @@ The input is an Attrset of:
 
 
 .example
-[%collapsible%open]
+[%collapsible]
 ====
 [source,nix]
 ----
@@ -256,6 +382,39 @@ builtins.attrNames (builtins.readDir outDir)
 ====
 
 
+.implementation
+[%collapsible]
+====
+[source,nix]
+----
+{
+  yamlToMultiJsonFiles =
+    {
+      yamlContent,
+      yqExpression ? null,
+    }:
+    let
+      yqExpr =
+        if yqExpression == null then
+          ".metadata.name + \"-\" + (.kind | downcase) + \"-\" + (.metadata.namespace // (.kind | downcase))"
+        else
+          yqExpression;
+    in
+    pkgs.stdenv.mkDerivation {
+      name = "yaml2multijsonfile";
+      inherit yamlContent;
+      passAsFile = [ "yamlContent" ];
+      phases = [ "buildPhase" ];
+      buildPhase = ''
+        mkdir $out
+        cd $out
+        ${pkgs.yq-go}/bin/yq -p yaml -o json -s '${yqExpr}' $yamlContentPath
+      '';
+    };
+}
+----
+====
+
 === `yamlToMultiJsonFilePaths`
 It turns some YAML content describing ONE OR MORE Kubernetes resources into as many JSON manifests as resources described. The return value is a list of [.underline]#*store path*# containing built files.
 
@@ -267,7 +426,7 @@ yamlToMultiJsonFiles :: Attrset{ yamlContent, yqExpression ? null } -> [String]
 ----
 
 .example
-[%collapsible%open]
+[%collapsible]
 ====
 [source,nix]
 ----
@@ -282,6 +441,25 @@ absPaths
 ====
 
 
+.implementation
+[%collapsible]
+====
+[source,nix]
+----
+{
+  yamlToMultiJsonFilePaths =
+    {
+      yamlContent,
+      yqExpression ? null,
+    }@args:
+    getGeneratedFiles (yamlToMultiJsonFiles {
+      inherit yamlContent yqExpression;
+    });
+
+}
+----
+====
+
 
 === `yamlToNix`
 Loads parses YAML definitions into Nix language. It does store data in the [.underline]#*nix store*#.
@@ -292,7 +470,7 @@ yamlToNix :: String -> Attrset / [Attrset]
 ----
 
 .example
-[%collapsible%open]
+[%collapsible]
 ====
 [source,nix]
 ----
@@ -383,6 +561,23 @@ yamlToNix :: String -> Attrset / [Attrset]
 ====
 
 
+.implementation
+[%collapsible]
+====
+[source,nix]
+----
+{
+  yamlToNix =
+    yamlContent:
+    fromJSON (yamlToJson {
+      inherit yamlContent;
+    });
+}
+----
+====
+
+
+
 === `yamlToNixList`
 Same as yamlToNix but forces the output to be a List. It does store data in the [.underline]#*nix store*#.
 
@@ -392,7 +587,7 @@ yamlToNix :: String -> [Attrset]
 ----
 
 .example
-[%collapsible%open]
+[%collapsible]
 ====
 [source,nix]
 ----
@@ -420,4 +615,19 @@ yamlToNix :: String -> [Attrset]
 ----
 ====
 
+.implementation
+[%collapsible]
+====
+[source,nix]
+----
+{
+  yamlToNixList =
+    yamlContent:
+    let
+      fileAbsPaths = yamlToMultiJsonFilePaths { inherit yamlContent; };
+    in
+    map (path: readPathAndThen path fromJSON) fileAbsPaths;
+}
+----
+====
 

@@ -56,8 +56,7 @@ rec {
     input:
     let
       nixData = fromJSON input;
-      process =
-        c:
+      process = c:
         let
           name = c.metadata.name;
           kind = lib.strings.toLower c.kind;
