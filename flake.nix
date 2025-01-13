@@ -11,14 +11,10 @@
       kubelib = pkgs.callPackage ./lib { };
     in
     {
-      packages.default = self.packages.x86_64-linux.lib;
-      packages.x86_64-linux.lib = kubelib;
-      packages.x86_64-linux.test = kubelib.yamlToMultiJsonFiles {
-        yamlContent = builtins.readFile ./single.yml;
-      };
+      packages.${system}.default = self.packages.lib;
+      packages.lib = kubelib;
       devShells.${system}.default = pkgs.mkShell {
         buildInputs = with pkgs; [ yq-go ];
-
       };
     };
 }
