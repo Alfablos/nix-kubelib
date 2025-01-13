@@ -72,8 +72,10 @@ rec {
     in
     f nixData;
 
+
   keyValFromJsonManifestFile = path: readPathAndThen path keyValFromJsonManifest;
   # Same as kkeyValFromJsonManifest but deals with list of resources
+
   keyValFromJsonManifestFiles =
     paths:
     let
@@ -111,7 +113,7 @@ rec {
     };
 
   # Turns some YAML content describing ONE OR MORE Kubernetes resources
-  # into as many JSON manifests as resources described. The RETURN VALUE is a
+  # into as many JSON manifests as resources described. The RETURN VALUE is
   # the STORE PATH to the directory containing built files.
   # This function is useful for directly working with Kubernetes AddonManager.
   yamlToMultiJsonFiles =

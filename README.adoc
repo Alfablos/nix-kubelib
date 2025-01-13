@@ -1,8 +1,12 @@
-= Nix utilities for Helm
+= Kubelib: Nix utilities for Kubernetes
 
 Inspired by https://github.com/farcaller/nix-kube-generators.
 
 A set of tools to handle Kubernetes related resources.
+
+WARNING: this library makes use of https://github.com/mikefarah/yq[github:mikefarah/yq], *NOT* https://github.com/kislyuk/yq[github:kislyuk/yq]! Keep it in mind while troubleshooting.
+
+Many are convenience wrappers around others.
 
 
 == Lib
@@ -36,15 +40,14 @@ The library has 2 main focuses: one is handling YAML, JSON and Nix conversions, 
 
 | `toList` | Turns a Nix list into the Nix equivalent of a Kubernetes resource list (kind: List)
 
-| `keyValFromJsonResource` |   Takes a JSON kubernetes manifests and builds a key-value pair
-from the manifest.
+| `keyValFromJsonManifest` |   Takes a JSON kubernetes manifests and builds a key-value pair
+from the manifest. Also deals with lists.
 
 - The VALUE is the content of the file itself
 
 - The KEY is the string interpolation of resource name, resource kind
 and resource namespace. In case of a non-namespaced resource, the kind is repeated
 
-| `keyValFromJsonResources` | Same as kkeyValFromJsonResource but deals with list of resources
 
 
 |===
@@ -67,11 +70,12 @@ toList :: [a] -> kubernetes::List a
 ----
 
 .example
-[%collapsible%open%]
+[%collapsible%open]
 ====
 [source,nix]
 ----
 toList [ { a = "some"; b = "data"; } { a = "some"; b = "other"; c = "data"; } ]
+
 {
   apiVersion = "v1";
   items = [
@@ -90,9 +94,138 @@ toList [ { a = "some"; b = "data"; } { a = "some"; b = "other"; c = "data"; } ]
 ----
 ====
 
-=== `keyValFromJsonResource`
-Takes a JSON kubernetes manifests and builds a key-value pair from the manifest.
+=== `keyValFromJsonManifest`
+Takes a JSON kubernetes manifest `content` and builds a key-value pair from the manifest.
 
-- The VALUE is the content of the file itself
+- The *VALUE* is the content of the file itself
 
-- The KEY is the string interpolation of resource name, resource kind and resource namespace. In case of a non-namespaced resource, the kind is repeated
+- The *KEY* is the string interpolation of resource name, resource kind and resource namespace. In case of a non-namespaced resource, the kind is repeated
+
+[source,haskell]
+----
+keyValFromJsonManifest: a -> Attrset
+keyValFromJsonManifest: [a] -> [Attrset]
+----
+
+.example
+[%collapsible%open]
+====
+[source,nix]
+----
+keyValFromJsonManifest (builtins.readFile ./server-cert.json)       # Single
+
+{ mypp-serverauth-certificate-myapp = "{\"apiVersion\":\"cert-manager.io/v1\",\"kind\":\"Certificate\",\"metadata\":{\"name\":\"mypp-serverauth\",\"namespace\":\"myapp\"},\"spec\":{\"dnsNames\":[\"myapp.mydoma
+in.com\"],\"issuerRef\":{\"kind\":\"ClusterIssuer\",\"name\":\"letsencrypt-dns\"},\"secretName\":\"myapp-server-tls\",\"usages\":[\"server auth\"]}}"; }
+
+
+jsonFile = yamlToJson { yamlContent = builtins.readFile ./services.yml; }    # Multi
+keyValFromJsonManifest jsonFile
+
+[
+  { myapp-service-myapp = "{\"apiVersion\":\"v1\",\"kind\":\"Service\",\"metadata\":{\"labels\":{\"app\":\"myapp\",\"component\":\"main\"},\"name\":\"myapp\",\"namespace\":\"myapp\"},\"spec\":{\"ports\":[{\"name\":\"http\",\"port\":80,\"protocol\":\"TCP\",\"targetPort\":\"http\"},{\"name\":\"https\",\"port\":443,\"protocol\":\"TCP\",\"targetPort\":\"https\"}],\"selector\":{\"app\":\"myapp\",\"components\":\"main\"}}}"; }
+  { myapp-jobscheduler-service-myapp = "{\"apiVersion\":\"v1\",\"kind\":\"Service\",\"metadata\":{\"labels\":{\"app\":\"myapp\",\"component\":\"jobscheduler\"},\"name\":\"myapp-jobscheduler\",\"namespace\":\"myapp\"},\"spec\":{\"ports\":[{\"name\":\"http\",\"port\":3000,\"protocol\":\"TCP\",\"targetPort\":\"http\"}],\"selector\":{\"app\":\"myapp\",\"component\":\"jobscheduler\"}}}"; }
+]
+----
+====
+
+
+=== `keyValFromJsonManifestFile`
+Same as keyValFromJsonManifest but accespts a `path` instead of content.
+
+[source,haskell]
+----
+keyValFromJsonManifestFile :: p -> Attrset || [Attrset]
+----
+
+
+=== `keyValFromJsonManifestFiles`
+Same as keyValFromJsonManifestFile but deals with Lists of `paths`.
+
+[source,haskell]
+----
+keyValFromJsonManifestFiles :: [p] -> [Attrset]
+----
+
+
+=== `yamlToJson`
+Turns input YAML `content` into JSON.
+
+[source,haskell]
+----
+yamlToJson :: Attrset{ yamlContent, outputType ? null } -> String
+----
+
+The input is an Attrset of:
+
+* *yamlContent*: YAML content as string
+* *outputType*, which only makes sense if you know the result will be a list:
+** _array_ (default): simple JSON array. `[ {...},{...},... ]`
+** _object_: JSON object with your data stored in the _items_ key. `{ "items": [ {...},{...},... ] }`
+
+
+=== `yamlToJsonFile`
+Similar to yamlToJson but turns input YAML `content` into a _single_ JSON file [.underline]#*in the store*#.
+
+[source,haskell]
+----
+yamlToJson :: Attrset{ path, outputType ? null } -> Derivation
+----
+
+.example
+[%collapsible%open]
+====
+[source,nix]
+----
+jf = yamlToJsonFile { yamlContent = builtins.readFile ./services.yml; outputType = "object"; }
+builtins.readFile jf
+
+"{\n  \"items\": [\n    {\n      \"apiVersion\": \"v1\",\n      \"kind\": \"Service\",\n      \"metadata\": {\n        \"name\": \"myapp\",\n        \"namespace\": \"myapp\",\n        \"labels\": {\n          \"app\": \"myapp\",\n          \"component\": \"main\"\n        }\n      },\n      \"spec\": {\n        \"ports\": [\n          {\n            \"name\": \"http\",\n            \"port\": 80,\n            \"protocol\": \"TCP\",\n            \"targetPort\": \"http\"\n          },\n          {\n            \"name\": \"https\",\n            \"port\": 443,\n            \"protocol\": \"TCP\",\n            \"targetPort\": \"https\"\n          }\n        ],\n        \"selector\": {\n          \"app\": \"myapp\",\n          \"components\": \"main\"\n        }\n      }\n    },\n    {\n      \"apiVersion\": \"v1\",\n      \"kind\": \"Service\",\n      \"metadata\": {\n        \"name\": \"myapp-jobscheduler\",\n        \"namespace\": \"myapp\",\n        \"labels\": {\n          \"app\": \"myapp\",\n          \"component\": \"jobscheduler\"\n        }\n      },\n      \"spec\": {\n        \"ports\": [\n          {\n            \"name\": \"http\",\n            \"port\": 3000,\n            \"protocol\": \"TCP\",\n            \"targetPort\": \"http\"\n          }\n        ],\n        \"selector\": {\n          \"app\": \"myapp\",\n          \"component\": \"jobscheduler\"\n        }\n      }\n    }\n  ]\n}\n"
+
+----
+====
+
+The input is an Attrset of:
+
+* *yamlContent*: YAML content as string
+* *outputType*, which only makes sense if you know the result will be a list:
+** _array_ (default): simple JSON array. `[ {...},{...},... ]`
+** _object_: JSON object with your data stored in the _items_ key. `{ "items": [ {...},{...},... ] }`
+
+
+=== ``
+
+=== `yamlToMultiJsonFiles`
+The purpose of this function is to automate the creation of a set of files compatible with the https://github.com/kubernetes/kubernetes/blob/master/cluster/addons/addon-manager/README.md[Kubernetes AddonManager] which is the https://github.com/NixOS/nixpkgs/blob/046eee4ec50a7b86148b056d6ddb44c4fc9a6a15/nixos/modules/services/cluster/kubernetes/addon-manager.nix#L27[default way of installing addons if you're running Kubernetes bare metal on NixOS].
+
+It turns some YAML content describing ONE OR MORE Kubernetes resources into as many JSON manifests as resources described. The return value is the [.underline]#*store path*# containing built files.
+
+
+[source,haskell]
+----
+yamlToMultiJsonFiles :: Attrset{ yamlContent, yqExpression ? null } -> Derivation
+----
+
+yamlToMultiJsonFiles, by default, uses the following https://github.com/mikefarah/yq[yq] expression: +
+`.metadata.name + "-" + (.kind | downcase) + "-" + (.metadata.namespace // (.kind | downcase))`
+
+Files are created as follows:
+
+* The *filename* is, by default, the string interpolation of resource name, resource kind and resource namespace. In case of a non-namespaced resource, the kind is repeated.
+ * The *value* is the content of the file itself
+
+The input is an Attrset of:
+
+* *yamlContent*: YAML content as string
+* *yqExpression*: yqExpression override in case you want a different naming.
+
+
+=== `yamlToMultiJsonFilePaths`
+It turns some YAML content describing ONE OR MORE Kubernetes resources into as many JSON manifests as resources described. The return value is a list of [.underline]#*store path*# containing built files.
+
+It uses yamlToMultiJsonFiles under the hood, inputs and logic are the same.
+
+[source,haskell]
+----
+yamlToMultiJsonFiles :: Attrset{ yamlContent, yqExpression ? null } -> [String]
+----
+
