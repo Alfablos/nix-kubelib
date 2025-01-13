@@ -18,19 +18,19 @@ The library has 2 main focuses: one is handling YAML, JSON and Nix conversions, 
 |===
 | Input type | YAML | JSON | JSON file | Multiple JSON files | Nix | Nix List
 
-| YAML content (1 object) | - | yes: `yamlToJson` | yes: `yamlToJsonFile` | yes: `yamlToMultiJsonFiles` | yes: `yamlToNix` | yes: `yamlToNix`
+| YAML content (1 object) | - |  `yamlToJson` |  `yamlToJsonFile` |  `yamlToMultiJsonFiles` |  `yamlToNix` |  `yamlToNix`
 
-| YAML content (multiple objects) | - | yes: `yamlToJson` | yes: `yamlToJsonFile`| yes: `yamlToMultiJsonFiles` | yes: `yamlToNix` | yes: `yamlToNixList`
+| YAML content (multiple objects) | - |  `yamlToJson` |  `yamlToJsonFile`|  `yamlToMultiJsonFiles` |  `yamlToNix` |  `yamlToNixList`
 
-| YAML file (single object) | - | yes: `yamlFileToJson` | yes:  `yamlFileToJsonFile` | yes: `yamlFileToMultiJsonFiles` | yes: `yamlFileToNix` | yes: `yamlFileToNixList`
+| YAML file (single object) | - |  `yamlFileToJson` |   `yamlFileToJsonFile` |  `yamlFileToMultiJsonFiles` |  `yamlFileToNix` |  `yamlFileToNixList`
 
-| YAML file (multiple objects) | - | yes: `yamlFileToJson` | yes: `yamlToJsonFile`| yes: `yamlToMultiJsonFiles` | yes: `yamlFileToNix` | yes: `yamlFileToNixList`
+| YAML file (multiple objects) | - |  `yamlFileToJson` |  `yamlToJsonFile`|  `yamlToMultiJsonFiles` |  `yamlFileToNix` |  `yamlFileToNixList`
 
-| Nix | yes: `nixToYaml` | _builtin_ | _builtin_ | *no* | - | -
+| Nix |  `nixToYaml` | _builtin_ | _builtin_ | *no* | - | -
 
-| JSON content | yes: `jsonToYamlFile` (YAML file) | - | - | *no* | _builtin_ | _builtin_
+| JSON content |  `jsonToYamlFile` (YAML file) | - | - | *no* | _builtin_ | _builtin_
 
-| JSON file | yes: `jsonFileToYamlFile` (YAML file) | - | - | *no* | _builtin_ | _builtin_
+| JSON file |  `jsonFileToYamlFile` (YAML file) | - | - | *no* | _builtin_ | _builtin_
 
 |===
 
@@ -38,7 +38,7 @@ The library has 2 main focuses: one is handling YAML, JSON and Nix conversions, 
 [cols="1,4"]
 |===
 
-| `toList` | Turns a Nix list into the Nix equivalent of a Kubernetes resource list (kind: List)
+| `toList` | Turns a Nix list into the Nix equivalent of a Kubernetes resource list (kind: List).
 
 | `keyValFromJsonManifest` |   Takes a JSON kubernetes manifests and builds a key-value pair
 from the manifest. Also deals with lists.
@@ -46,9 +46,9 @@ from the manifest. Also deals with lists.
 - The VALUE is the content of the file itself
 
 - The KEY is the string interpolation of resource name, resource kind
-and resource namespace. In case of a non-namespaced resource, the kind is repeated
+and resource namespace. In case of a non-namespaced resource, the kind is repeated.
 
-
+| `keyValFromJsonManifestFiles` | Sane as keyValFromJsonManifest but allows multiple paths as input.
 
 |===
 
@@ -152,7 +152,7 @@ Turns input YAML `content` into JSON.
 
 [source,haskell]
 ----
-yamlToJson :: Attrset{ yamlContent, outputType ? null } -> String
+yamlToJson :: Attrset{ yamlContent, outputType ? "array" } -> String
 ----
 
 The input is an Attrset of:
@@ -163,12 +163,33 @@ The input is an Attrset of:
 ** _object_: JSON object with your data stored in the _items_ key. `{ "items": [ {...},{...},... ] }`
 
 
+.example
+[%collapsible%open]
+====
+[source,nix]
+----
+yamlToJson { yamlContent = builtins.readFile ./services.yml; }
+
+"[\n  {\n    \"apiVersion\": \"v1\",\n    \"kind\": \"Service\",\n    \"metadata\": {\n      \"name\": \"m
+yapp\",\n      \"namespace\": \"myapp\",\n      \"labels\": {\n        \"app\": \"myapp\",\n        \"component\": \"m
+ain\"\n      }\n    },\n    \"spec\": {\n      \"ports\": [\n        {\n          \"name\": \"http\",\n          \"por
+t\": 80,\n          \"protocol\": \"TCP\",\n          \"targetPort\": \"http\"\n        },\n        {\n          \"nam
+e\": \"https\",\n          \"port\": 443,\n          \"protocol\": \"TCP\",\n          \"targetPort\": \"https\"\n
+    }\n      ],\n      \"selector\": {\n        \"app\": \"myapp\",\n        \"components\": \"main\"\n      }\n    }\
+n  },\n  {\n    \"apiVersion\": \"v1\",\n    \"kind\": \"Service\",\n    \"metadata\": {\n      \"name\": \"myapp-jobs
+cheduler\",\n      \"namespace\": \"myapp\",\n      \"labels\": {\n        \"app\": \"myapp\",\n        \"component\":
+ \"jobscheduler\"\n      }\n    },\n    \"spec\": {\n      \"ports\": [\n        {\n          \"name\": \"http\",\n
+       \"port\": 3000,\n          \"protocol\": \"TCP\",\n          \"targetPort\": \"http\"\n        }\n      ],\n
+   \"selector\": {\n        \"app\": \"myapp\",\n        \"component\": \"jobscheduler\"\n      }\n    }\n  }\n]\n"
+----
+====
+
 === `yamlToJsonFile`
 Similar to yamlToJson but turns input YAML `content` into a _single_ JSON file [.underline]#*in the store*#.
 
 [source,haskell]
 ----
-yamlToJson :: Attrset{ path, outputType ? null } -> Derivation
+yamlToJson :: Attrset{ path, outputType ? "array" } -> Derivation
 ----
 
 .example
@@ -177,7 +198,8 @@ yamlToJson :: Attrset{ path, outputType ? null } -> Derivation
 [source,nix]
 ----
 jf = yamlToJsonFile { yamlContent = builtins.readFile ./services.yml; outputType = "object"; }
-builtins.readFile jf
+
+builtins.readFile jf        # Singe it returns a derivation
 
 "{\n  \"items\": [\n    {\n      \"apiVersion\": \"v1\",\n      \"kind\": \"Service\",\n      \"metadata\": {\n        \"name\": \"myapp\",\n        \"namespace\": \"myapp\",\n        \"labels\": {\n          \"app\": \"myapp\",\n          \"component\": \"main\"\n        }\n      },\n      \"spec\": {\n        \"ports\": [\n          {\n            \"name\": \"http\",\n            \"port\": 80,\n            \"protocol\": \"TCP\",\n            \"targetPort\": \"http\"\n          },\n          {\n            \"name\": \"https\",\n            \"port\": 443,\n            \"protocol\": \"TCP\",\n            \"targetPort\": \"https\"\n          }\n        ],\n        \"selector\": {\n          \"app\": \"myapp\",\n          \"components\": \"main\"\n        }\n      }\n    },\n    {\n      \"apiVersion\": \"v1\",\n      \"kind\": \"Service\",\n      \"metadata\": {\n        \"name\": \"myapp-jobscheduler\",\n        \"namespace\": \"myapp\",\n        \"labels\": {\n          \"app\": \"myapp\",\n          \"component\": \"jobscheduler\"\n        }\n      },\n      \"spec\": {\n        \"ports\": [\n          {\n            \"name\": \"http\",\n            \"port\": 3000,\n            \"protocol\": \"TCP\",\n            \"targetPort\": \"http\"\n          }\n        ],\n        \"selector\": {\n          \"app\": \"myapp\",\n          \"component\": \"jobscheduler\"\n        }\n      }\n    }\n  ]\n}\n"
 
@@ -191,8 +213,6 @@ The input is an Attrset of:
 ** _array_ (default): simple JSON array. `[ {...},{...},... ]`
 ** _object_: JSON object with your data stored in the _items_ key. `{ "items": [ {...},{...},... ] }`
 
-
-=== ``
 
 === `yamlToMultiJsonFiles`
 The purpose of this function is to automate the creation of a set of files compatible with the https://github.com/kubernetes/kubernetes/blob/master/cluster/addons/addon-manager/README.md[Kubernetes AddonManager] which is the https://github.com/NixOS/nixpkgs/blob/046eee4ec50a7b86148b056d6ddb44c4fc9a6a15/nixos/modules/services/cluster/kubernetes/addon-manager.nix#L27[default way of installing addons if you're running Kubernetes bare metal on NixOS].
@@ -219,6 +239,23 @@ The input is an Attrset of:
 * *yqExpression*: yqExpression override in case you want a different naming.
 
 
+.example
+[%collapsible%open]
+====
+[source,nix]
+----
+outDir = yamlToMultiJsonFiles { yamlContent = builtins.readFile ./services.yml; }
+
+builtins.attrNames (builtins.readDir outDir)
+
+[
+  "myapp-jobscheduler-service-myapp.json"
+  "myapp-service-myapp.json"
+]
+----
+====
+
+
 === `yamlToMultiJsonFilePaths`
 It turns some YAML content describing ONE OR MORE Kubernetes resources into as many JSON manifests as resources described. The return value is a list of [.underline]#*store path*# containing built files.
 
@@ -228,4 +265,159 @@ It uses yamlToMultiJsonFiles under the hood, inputs and logic are the same.
 ----
 yamlToMultiJsonFiles :: Attrset{ yamlContent, yqExpression ? null } -> [String]
 ----
+
+.example
+[%collapsible%open]
+====
+[source,nix]
+----
+absPaths = yamlToMultiJsonFilePaths { yamlContent = builtins.readFile ./services.yml; }
+
+absPaths
+[
+  "/nix/store/7c6px9in1i05bl3r2j9jym564vhhpzs0-yaml2multijsonfile/myapp-jobscheduler-service-myapp.json"
+  "/nix/store/7c6px9in1i05bl3r2j9jym564vhhpzs0-yaml2multijsonfile/myapp-service-myapp.json"
+]
+----
+====
+
+
+
+=== `yamlToNix`
+Loads parses YAML definitions into Nix language. It does store data in the [.underline]#*nix store*#.
+
+[source,haskell]
+----
+yamlToNix :: String -> Attrset / [Attrset]
+----
+
+.example
+[%collapsible%open]
+====
+[source,nix]
+----
+:p klib.yamlToNix (builtins.readFile ./server-cert.yml)
+
+{
+  apiVersion = "cert-manager.io/v1";
+  kind = "Certificate";
+  metadata = {
+    name = "mypp-serverauth";
+    namespace = "myapp";
+  };
+  spec = {
+    dnsNames = [ "myapp.mydomain.com" ];
+    issuerRef = {
+      kind = "ClusterIssuer";
+      name = "letsencrypt-dns";
+    };
+    secretName = "myapp-server-tls";
+    usages = [ "server auth" ];
+  };
+}
+
+
+:p yamlToNix (builtins.readFile ./services.yml)
+
+[
+  {
+    apiVersion = "v1";
+    kind = "Service";
+    metadata = {
+      labels = {
+        app = "myapp";
+        component = "main";
+      };
+      name = "myapp";
+      namespace = "myapp";
+    };
+    spec = {
+      ports = [
+        {
+          name = "http";
+          port = 80;
+          protocol = "TCP";
+          targetPort = "http";
+        }
+        {
+          name = "https";
+          port = 443;
+          protocol = "TCP";
+          targetPort = "https";
+        }
+      ];
+      selector = {
+        app = "myapp";
+        components = "main";
+      };
+    };
+  }
+  {
+    apiVersion = "v1";
+    kind = "Service";
+    metadata = {
+      labels = {
+        app = "myapp";
+        component = "jobscheduler";
+      };
+      name = "myapp-jobscheduler";
+      namespace = "myapp";
+    };
+    spec = {
+      ports = [
+        {
+          name = "http";
+          port = 3000;
+          protocol = "TCP";
+          targetPort = "http";
+        }
+      ];
+      selector = {
+        app = "myapp";
+        component = "jobscheduler";
+      };
+    };
+  }
+]
+----
+====
+
+
+=== `yamlToNixList`
+Same as yamlToNix but forces the output to be a List. It does store data in the [.underline]#*nix store*#.
+
+[source,haskell]
+----
+yamlToNix :: String -> [Attrset]
+----
+
+.example
+[%collapsible%open]
+====
+[source,nix]
+----
+:p yamlToNixList (builtins.readFile ./server-cert.yml)
+
+[
+  {
+    apiVersion = "cert-manager.io/v1";
+    kind = "Certificate";
+    metadata = {
+      name = "mypp-serverauth";
+      namespace = "myapp";
+    };
+    spec = {
+      dnsNames = [ "myapp.mydomain.com" ];
+      issuerRef = {
+        kind = "ClusterIssuer";
+        name = "letsencrypt-dns";
+      };
+      secretName = "myapp-server-tls";
+      usages = [ "server auth" ];
+    };
+  }
+]
+----
+====
+
 

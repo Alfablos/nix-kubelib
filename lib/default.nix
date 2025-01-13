@@ -91,11 +91,11 @@ rec {
   yamlToJsonFile =
     {
       yamlContent,
-      outputType ? null,
+      outputType ? "array",
     }:
     let
       jqReturnValue =
-        if outputType == "array" || outputType == null then
+        if outputType == "array" then
           "."
         else if outputType == "object" then
           "{ items:. }"
@@ -165,7 +165,7 @@ rec {
   yamlToJson =
     {
       yamlContent,
-      outputType ? null,
+      outputType ? "array",
     }@args:
     let
       f = kallPackage args yamlToJsonFile { };
@@ -184,7 +184,7 @@ rec {
   yamlFileToJson =
     {
       path,
-      outputType ? null,
+      outputType ? "array",
     }@args:
     callWithYamlContent args yamlToJson;
 
@@ -192,7 +192,7 @@ rec {
   yamlFileToJsonFile =
     {
       path,
-      outputType ? null,
+      outputType ? "array",
     }@args:
     callWithYamlContent args yamlToJsonFile;
   # Same as yyamlToMultiJsonFiles but for reading files directly.
