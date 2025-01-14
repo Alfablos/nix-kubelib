@@ -58,7 +58,7 @@ and resource namespace. In case of a non-namespaced resource, the kind is repeat
 * <<_yamlfiletonix,`yamlFileToNix`>>
 * <<_yamlfiletonixlist,`yamlFileToNixList`>>
 * <<yamlToJson,`yamlToJson`>>
-* <<_yamltojsonfile,`yamlToJsonFile`>>
+* <<yamlToJsonFile,`yamlToJsonFile`>>
 * <<_yamltomultijsonfilepaths,`yamlToMultiJsonFilePaths`>>
 * <<_yamltomultijsonfiles,`yamlToMultiJsonFiles`>>
 * <<_yamltonix,`yamlToNix`>>
@@ -110,7 +110,9 @@ yamlToJsonFile [ { source = ./tests/server-cert.yml; } { source = builtins.readF
 yamlToJsonFile [ { source = ./tests/services.yml; outputType = "object"; } ./tests/services.yml (builtins.readFile ./tests/server-cert.yml) ]   # mix
 ----
 
-[.underline]#*Expect a list if you call the function with a list, no matter what its signature is!*#.
+[.underline]#*Expect a list if you call a wrapped function with a list, no matter what its signature is!*#.
+
+Tipically, wrapped functions [.underline]#*do not require but support*# an Attrset with specific keys to modify the function behavior.
 
 .Wrapper implementation
 [%collapsible]
@@ -359,7 +361,7 @@ keyValFromJsonManifestFiles [ ./server-cert.json ./services.json ]
 '''
 [#yamlToJson]
 === `yamlToJson`
-<<wrapper,Wrapped>>. Turns input YAML into JSON.
+<<wrapper,Wrapped>>. Turns input YAML into JSON.  It does store data in the [.underline]#*nix store*#.
 
 [source,haskell]
 ----
@@ -393,7 +395,7 @@ cheduler\",\n      \"namespace\": \"myapp\",\n      \"labels\": {\n        \"app
        \"port\": 3000,\n          \"protocol\": \"TCP\",\n          \"targetPort\": \"http\"\n        }\n      ],\n
    \"selector\": {\n        \"app\": \"myapp\",\n        \"component\": \"jobscheduler\"\n      }\n    }\n  }\n]\n"
 
-yamlToJson { source = builtins.readFile ./tests/services.yml; }
+yamlToJson ./tests/services.yml
 
 "[\n  {\n    \"apiVersion\": \"v1\",\n    \"kind\": \"Service\",\n    \"metadata\": {\n      \"name\": \"m
 yapp\",\n      \"namespace\": \"myapp\",\n      \"labels\": {\n        \"app\": \"myapp\",\n        \"component\": \"m
@@ -429,16 +431,16 @@ cheduler\",\n      \"namespace\": \"myapp\",\n      \"labels\": {\n        \"app
 
 '''
 
+[#yamlToJsonFile]
 === `yamlToJsonFile`
-Similar to yamlToJson but turns input YAML `content` into a _single_ JSON file [.underline]#*in the store*#.
+<<wrapper,Wrapped>>. Similar to yamlToJson but turns input YAML into a _single_ JSON file [.underline]#*in the store*#.
 
 [source,haskell]
 ----
-yamlToJson :: Attrset { source , outputType ? "array" } -> Derivation
-yamlToJson :: Path / String -> Derivation
+yamlToJson :: wrapped -> Derivation
 ----
 
-The input is an Attrset of:
+As input it supports an Attrset of:
 
 * *yamlContent*: YAML content as string
 * *outputType*, which only makes sense if you know the result will be a list:
@@ -450,12 +452,14 @@ The input is an Attrset of:
 ====
 [source,nix]
 ----
-
-
 builtins.readFile yamlToJsonFile { yamlContent = builtins.readFile ./services.yml; outputType = "object"; }        # Since it returns a derivation
 
 "{\n  \"items\": [\n    {\n      \"apiVersion\": \"v1\",\n      \"kind\": \"Service\",\n      \"metadata\": {\n        \"name\": \"myapp\",\n        \"namespace\": \"myapp\",\n        \"labels\": {\n          \"app\": \"myapp\",\n          \"component\": \"main\"\n        }\n      },\n      \"spec\": {\n        \"ports\": [\n          {\n            \"name\": \"http\",\n            \"port\": 80,\n            \"protocol\": \"TCP\",\n            \"targetPort\": \"http\"\n          },\n          {\n            \"name\": \"https\",\n            \"port\": 443,\n            \"protocol\": \"TCP\",\n            \"targetPort\": \"https\"\n          }\n        ],\n        \"selector\": {\n          \"app\": \"myapp\",\n          \"components\": \"main\"\n        }\n      }\n    },\n    {\n      \"apiVersion\": \"v1\",\n      \"kind\": \"Service\",\n      \"metadata\": {\n        \"name\": \"myapp-jobscheduler\",\n        \"namespace\": \"myapp\",\n        \"labels\": {\n          \"app\": \"myapp\",\n          \"component\": \"jobscheduler\"\n        }\n      },\n      \"spec\": {\n        \"ports\": [\n          {\n            \"name\": \"http\",\n            \"port\": 3000,\n            \"protocol\": \"TCP\",\n            \"targetPort\": \"http\"\n          }\n        ],\n        \"selector\": {\n          \"app\": \"myapp\",\n          \"component\": \"jobscheduler\"\n        }\n      }\n    }\n  ]\n}\n"
 
+ builtins.readFile (yamlToJsonFile ./tests/server-cert.yml)
+"{\n  \"apiVersion\": \"cert-manager.io/v1\",\n  \"kind\": \"Certificate\",\n  \"metadata\": {\n    \"name\": \"mypp-serverauth\",\n    \"namespace\": \"myapp\"\n  },\n  \"spec\": {\n
+\"issuerRef\": {\n      \"kind\": \"ClusterIssuer\",\n      \"name\": \"letsencrypt-dns\"\n    },\n    \"secretName\": \"myapp-server-tls\",\n    \"usages\": [\n      \"server auth\"\n
+ ],\n    \"dnsNames\": [\n      \"myapp.mydomain.com\"\n    ]\n  }\n}\n"
 ----
 ====
 
@@ -466,9 +470,16 @@ builtins.readFile yamlToJsonFile { yamlContent = builtins.readFile ./services.ym
 [source,nix]
 ----
 {
-  yamlToJsonFile =
+  yamlToJsonFile = args: wrapF args _yamlToJsonFile;
+
+  # Turns some YAML content describing ONE OR MORE kubernetes resources
+  # into a SINGLE JSON file in the store.
+  # In case of more than one resource the default output is a JSON ARRAY (not an object).
+  # Call the function with "object" as an outputType and an object with the following structure
+  # will be returned: { "items": [ {...}, {...}, ... ] }
+  _yamlToJsonFile =
     {
-      yamlContent,
+      source,
       outputType ? "array",
     }:
     let
@@ -483,12 +494,15 @@ builtins.readFile yamlToJsonFile { yamlContent = builtins.readFile ./services.ym
       jqCommand = "${pkgs.jq}/bin/jq -n '[inputs] | if length == 1 then .[0] else ${jqReturnValue} end | .'";
     in
     pkgs.stdenv.mkDerivation {
-      name = "yaml2jsonfile";
-      inherit yamlContent;
-      passAsFile = [ "yamlContent" ];
+      name = "yaml2jsonfile.json";
+      inherit source;
+      passAsFile = [ "source" ];
       phases = [ "installPhase" ];
-      installPhase = "${pkgs.yq-go}/bin/yq $yamlContentPath -p yaml -o json | ${jqCommand} > $out";
+      installPhase = "${pkgs.yq-go}/bin/yq $sourcePath -p yaml -o json | ${jqCommand} > $out";
     };
+
+
+
 }
 ----
 ====
@@ -572,7 +586,7 @@ builtins.attrNames (builtins.readDir ( yamlToMultiJsonFiles { yamlContent = buil
 '''
 
 === `yamlToMultiJsonFilePaths`
-It turns some YAML content describing ONE OR MORE Kubernetes resources into as many JSON manifests as resources described. The return value is a list of [.underline]#*store path*# containing built files.
+It turns some YAML content describing ONE OR MORE Kubernetes resources into as many JSON manifests as resources described. The return value is a list of [.underline]#*store paths*# containing built files.
 
 It uses yamlToMultiJsonFiles under the hood, inputs and logic are the same.
 
