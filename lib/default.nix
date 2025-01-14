@@ -137,14 +137,12 @@ rec {
 
   # Converts YAML content to JSON.
   yamlToJson =
-    {
-      source,
-      outputType ? "array",
-    }@args:
-    let
-      f = kallPackage args yamlToJsonFile { };
-    in
-    readFile f;
+    args:
+    if isList args
+    then
+      let paths = map (a: wrapF a _yamlToJsonFile) args;
+      in map builtins.readFile paths
+    else readFile (wrapF args _yamlToJsonFile);
 
   # Converts YAML content (object or list) to Nix. Evaluates to a list anyway if the
   # input is a list of objects.
@@ -189,14 +187,6 @@ rec {
         if topLevelKey != null && jsonIsList source then "--expression '{ \"${topLevelKey}\":. }'" else "";
       installPhase = "${pkgs.yq-go}/bin/yq $sourcePath -p json -o yaml ${yqTransform} > $out";
     };
-
-  # Same as yamlToJson but for reading files directly.
-  yamlFileToJson =
-    {
-      source,
-      outputType ? "array",
-    }@args:
-    wrapF args yamlToJson;
 
   # Same as yyamlToMultiJsonFiles but for reading files directly.
   yamlFileToMultiJsonFiles =

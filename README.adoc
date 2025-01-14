@@ -24,9 +24,9 @@ The library has 2 main focuses: one is handling YAML, JSON and Nix conversions, 
 
 | YAML content (multiple objects) | - | `yamlToJson` | `yamlToJsonFile` | `yamlToMultiJsonFiles` | `yamlToNix` | `yamlToNixList`
 
-| YAML file (single object) | - | `yamlFileToJson` | `yamlToJsonFile` | `yamlFileToMultiJsonFiles` | `yamlFileToNix` | `yamlFileToNixList`
+| YAML file (single object) | - | `yamlToJson` | `yamlToJsonFile` | `yamlFileToMultiJsonFiles` | `yamlFileToNix` | `yamlFileToNixList`
 
-| YAML file (multiple objects) | - | `yamlFileToJson` | `yamlToJsonFile`| `yamlToMultiJsonFiles` | `yamlFileToNix` | `yamlFileToNixList`
+| YAML file (multiple objects) | - | `yamlToJson` | `yamlToJsonFile`| `yamlToMultiJsonFiles` | `yamlFileToNix` | `yamlFileToNixList`
 
 | Nix | `nixToYaml` | _builtin_ | _builtin_ | *no* | - | -
 
@@ -54,11 +54,10 @@ and resource namespace. In case of a non-namespaced resource, the kind is repeat
 
 [.underline]#*From YAML*# functions:
 
-* <<_yamlfiletojson,`yamlFileToJson`>>
 * <<_yamlfiletomultijsonfiles,`yamlFileToMultiJsonFiles`>>
 * <<_yamlfiletonix,`yamlFileToNix`>>
 * <<_yamlfiletonixlist,`yamlFileToNixList`>>
-* <<_yamltojson,`yamlToJson`>>
+* <<yamlToJson,`yamlToJson`>>
 * <<_yamltojsonfile,`yamlToJsonFile`>>
 * <<_yamltomultijsonfilepaths,`yamlToMultiJsonFilePaths`>>
 * <<_yamltomultijsonfiles,`yamlToMultiJsonFiles`>>
@@ -82,6 +81,7 @@ and resource namespace. In case of a non-namespaced resource, the kind is repeat
 
 * <<_tolist,`toList`>>
 
+[#wrapper]
 === Functions Signatures
 A wrapper around many functions takes care of adding additional flexibility while calling them. +
 For example you can call _yamlToJsonFile_ in several ways depending on what kind of input you have and how clean you want to keep your code while not needing additional control. Even the _source_ parameter can have multiple forms:
@@ -90,11 +90,11 @@ For example you can call _yamlToJsonFile_ in several ways depending on what kind
 ----
 yamlToJsonFile :: Path => Derivation
 yamlToJsonFile :: String => Derivation
-yamlToJsonFile :: [ Path ] => Derivation
-yamlToJsonFile :: [ String ] => Derivation
+yamlToJsonFile :: [ Path ] => [ Derivation ]
+yamlToJsonFile :: [ String ] => [ Derivation ]
 yamlToJsonFile :: Attrset { source, outputType ? null } => Derivation
-yamlToJsonFile :: [ Attrset { source (Path), outputType ? null } ] => Derivation
-yamlToJsonFile :: [ Attrset { source (String), outputType ? null } ++ Path ++ String ] => Derivation
+yamlToJsonFile :: [ Attrset { source (Path), outputType ? null } ] => [ Derivation ]
+yamlToJsonFile :: [ Attrset { source (String), outputType ? null } ++ Path ++ String ] => [ Derivation ]
 ----
 
 For example these are all valid methods:
@@ -110,6 +110,57 @@ yamlToJsonFile [ { source = ./tests/server-cert.yml; } { source = builtins.readF
 yamlToJsonFile [ { source = ./tests/services.yml; outputType = "object"; } ./tests/services.yml (builtins.readFile ./tests/server-cert.yml) ]   # mix
 ----
 
+[.underline]#*Expect a list if you call the function with a list, no matter what its signature is!*#.
+
+.Wrapper implementation
+[%collapsible]
+====
+[source,nix]
+----
+rec {
+  kallPackage =
+    incomingArgs: f: overrides:
+    let
+      fArgs = functionArgs f;
+      finalArgs = intersectAttrs fArgs incomingArgs // overrides; # Merge with overrides happens last
+    in
+    f finalArgs;
+
+  # Allows to call a function in two ways:
+  # - f /some/path or f (builtins.readFile /some/path) or f (drv)
+  # - f { arg1 = "val1"; arg2 = "val2"; ... }
+  # while calling the downstream function with a unified interface.
+  resolveArgs = args: if isAttrs args then args else { source = args; };
+
+  # Caller calls a function with args. Args can be { source, this, that, ... },
+  # a path/string or a list of elements.
+  # If a list is detected, each element is processed as follows:
+  #   If a path is detected, the content is read before calling the downstream function.
+  #   If args is Attrset then proceed, if not turn it into an Attrset with defaults.
+  # If no list is passed process happens normally.
+  # This allows to mix argument sources:
+  # - yamlToJsonFile [ ./tests/services.yml (builtins.readFile ./tests/server-cert.yml) ]
+  # - yamlToJsonFile [ { source = ./tests/services.yml; } { source = (builtins.readFile ./tests/server-cert.yml); } ]
+  wrapF =
+    args: f:
+    let
+      processUnit = as:
+        let
+          finalArgs = resolveArgs as;
+          sourceIsPath = isPath finalArgs.source;
+        in
+        if sourceIsPath then
+        kallPackage finalArgs f { source = readFile finalArgs.source; }
+        else
+        kallPackage finalArgs f { };
+    in
+    if isList args
+    then map processUnit args
+    else processUnit args;
+
+}
+----
+====
 
 === Helm lib
 
@@ -306,13 +357,13 @@ keyValFromJsonManifestFiles [ ./server-cert.json ./services.json ]
 ====
 
 '''
-
+[#yamlToJson]
 === `yamlToJson`
-Turns input YAML `content` into JSON.
+<<wrapper,Wrapped>>. Turns input YAML into JSON.
 
 [source,haskell]
 ----
-yamlToJson :: Attrset { yamlContent, outputType ? "array" } -> String
+yamlToJson :: wrapped -> String
 ----
 
 The input is an Attrset of:
@@ -328,7 +379,21 @@ The input is an Attrset of:
 ====
 [source,nix]
 ----
-yamlToJson { yamlContent = builtins.readFile ./services.yml; }
+yamlToJson { source = builtins.readFile ./tests/services.yml; }
+
+"[\n  {\n    \"apiVersion\": \"v1\",\n    \"kind\": \"Service\",\n    \"metadata\": {\n      \"name\": \"m
+yapp\",\n      \"namespace\": \"myapp\",\n      \"labels\": {\n        \"app\": \"myapp\",\n        \"component\": \"m
+ain\"\n      }\n    },\n    \"spec\": {\n      \"ports\": [\n        {\n          \"name\": \"http\",\n          \"por
+t\": 80,\n          \"protocol\": \"TCP\",\n          \"targetPort\": \"http\"\n        },\n        {\n          \"nam
+e\": \"https\",\n          \"port\": 443,\n          \"protocol\": \"TCP\",\n          \"targetPort\": \"https\"\n
+    }\n      ],\n      \"selector\": {\n        \"app\": \"myapp\",\n        \"components\": \"main\"\n      }\n    }\
+n  },\n  {\n    \"apiVersion\": \"v1\",\n    \"kind\": \"Service\",\n    \"metadata\": {\n      \"name\": \"myapp-jobs
+cheduler\",\n      \"namespace\": \"myapp\",\n      \"labels\": {\n        \"app\": \"myapp\",\n        \"component\":
+ \"jobscheduler\"\n      }\n    },\n    \"spec\": {\n      \"ports\": [\n        {\n          \"name\": \"http\",\n
+       \"port\": 3000,\n          \"protocol\": \"TCP\",\n          \"targetPort\": \"http\"\n        }\n      ],\n
+   \"selector\": {\n        \"app\": \"myapp\",\n        \"component\": \"jobscheduler\"\n      }\n    }\n  }\n]\n"
+
+yamlToJson { source = builtins.readFile ./tests/services.yml; }
 
 "[\n  {\n    \"apiVersion\": \"v1\",\n    \"kind\": \"Service\",\n    \"metadata\": {\n      \"name\": \"m
 yapp\",\n      \"namespace\": \"myapp\",\n      \"labels\": {\n        \"app\": \"myapp\",\n        \"component\": \"m
@@ -350,15 +415,14 @@ cheduler\",\n      \"namespace\": \"myapp\",\n      \"labels\": {\n        \"app
 [source,nix]
 ----
 {
+  # Converts YAML content to JSON.
   yamlToJson =
-    {
-      yamlContent,
-      outputType ? "array",
-    }@args:
-    let
-      f = kallPackage args yamlToJsonFile { };
-    in
-    readFile f;
+    args:
+    if isList args
+    then
+      let paths = map (a: wrapF a _yamlToJsonFile) args;
+      in map builtins.readFile paths
+    else readFile (wrapF args _yamlToJsonFile);
 }
 ----
 ====
@@ -888,43 +952,6 @@ builtins.readFile (jsonFileToYamlFile { path = ./services.json; topLevelKey = "s
 
 '''
 
-[yamlFileToJson]
-=== `yamlFileToJson`
-Same as yamlToJson but with a path as an input, reading the file is handled internally. It does store data in the [.underline]#*nix store*#.
-
-[source,haskell]
-----
-yamlFileToJson :: Attrset { path, outputType ? "array" } -> String
-----
-
-.example
-[%collapsible]
-====
-[source,nix]
-----
-yamlFileToJson { path = ./services.yml; outputType = "object"; }
-
-"{\n  \"items\": [\n    {\n      \"apiVersion\": \"v1\",\n      \"kind\": \"Service\",\n      \"metadata\": {\n        \"name\": \"myapp\",\n        \"namespace\": \"myapp\",\n        \"labels\": {\n          \"app\": \"myapp\",\n          \"component\": \"main\"\n        }\n      },\n      \"spec\": {\n        \"ports\": [\n          {\n            \"name\": \"http\",\n            \"port\": 80,\n            \"protocol\": \"TCP\",\n            \"targetPort\": \"http\"\n          },\n          {\n            \"name\": \"https\",\n            \"port\": 443,\n            \"protocol\": \"TCP\",\n            \"targetPort\": \"https\"\n          }\n        ],\n        \"selector\": {\n          \"app\": \"myapp\",\n          \"components\": \"main\"\n        }\n      }\n    },\n    {\n      \"apiVersion\": \"v1\",\n      \"kind\": \"Service\",\n      \"metadata\": {\n        \"name\": \"myapp-jobscheduler\",\n        \"namespace\": \"myapp\",\n        \"labels\": {\n          \"app\": \"myapp\",\n          \"component\": \"jobscheduler\"\n        }\n      },\n      \"spec\": {\n        \"ports\": [\n          {\n            \"name\": \"http\",\n            \"port\": 3000,\n            \"protocol\": \"TCP\",\n            \"targetPort\": \"http\"\n          }\n        ],\n        \"selector\": {\n          \"app\": \"myapp\",\n          \"component\": \"jobscheduler\"\n        }\n      }\n    }\n  ]\n}\n"
-----
-====
-
-.implementation
-[%collapsible]
-====
-[source,nix]
-----
-{
-  yamlFileToJson =
-    {
-      path,
-      outputType ? "array",
-    }@args:
-    callWithYamlContent args yamlToJson;
-}
-----
-====
-
-'''
 
 === `yamlFileToMultiJsonFiles`
 Same as yamlToMultiJsonFiles but with a path as an input, reading the file is handled internally. It does store data in the [.underline]#*nix store*#.

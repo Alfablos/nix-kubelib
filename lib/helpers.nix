@@ -19,11 +19,11 @@ rec {
   # Caller calls a function with args. Args can be { source, this, that, ... },
   # a path/string or a list of elements.
   # If a list is detected, each element is processed as follows:
-  # if a path is detected, the content is read before calling the downstream.
-  # If args is Attrset then proceed, if not turn it into an Attrset with defaults.
+  #   If a path is detected, the content is read before calling the downstream function.
+  #   If args is Attrset then proceed, if not turn it into an Attrset with defaults.
   # If no list is passed process happens normally.
   # This allows to mix argument sources:
-  # - yamlToJsonFile [ ./tests/services.yml (builtins.readFile ./tests/server-cert.yml)]
+  # - yamlToJsonFile [ ./tests/services.yml (builtins.readFile ./tests/server-cert.yml) ]
   # - yamlToJsonFile [ { source = ./tests/services.yml; } { source = (builtins.readFile ./tests/server-cert.yml); } ]
   wrapF =
     args: f:
