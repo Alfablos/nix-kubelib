@@ -86,11 +86,13 @@ rec {
     };
 
 
+  yamlToMultiJsonFiles = args: wrapF args _yamlToMultiJsonFiles;
+
   # Turns some YAML content describing ONE OR MORE Kubernetes resources
   # into as many JSON manifests as resources described. The RETURN VALUE is
   # the STORE PATH to the directory containing built files.
   # This function is useful for directly working with Kubernetes AddonManager.
-  yamlToMultiJsonFiles =
+  _yamlToMultiJsonFiles =
     {
       source,
       yqExpression ? null,
@@ -189,12 +191,6 @@ rec {
     };
 
   # Same as yyamlToMultiJsonFiles but for reading files directly.
-  yamlFileToMultiJsonFiles =
-    {
-      source,
-      yqExpression ? null,
-    }@args:
-    wrapF args yamlToMultiJsonFiles;
 
   # Same as yamlToNix but for reading files directly.
   yamlFileToNix = path: readPathAndThen path yamlToNix;

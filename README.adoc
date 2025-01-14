@@ -24,7 +24,7 @@ The library has 2 main focuses: one is handling YAML, JSON and Nix conversions, 
 
 | YAML content (multiple objects) | - | `yamlToJson` | `yamlToJsonFile` | `yamlToMultiJsonFiles` | `yamlToNix` | `yamlToNixList`
 
-| YAML file (single object) | - | `yamlToJson` | `yamlToJsonFile` | `yamlFileToMultiJsonFiles` | `yamlFileToNix` | `yamlFileToNixList`
+| YAML file (single object) | - | `yamlToJson` | `yamlToJsonFile` | `yamlToMultiJsonFiles` | `yamlFileToNix` | `yamlFileToNixList`
 
 | YAML file (multiple objects) | - | `yamlToJson` | `yamlToJsonFile`| `yamlToMultiJsonFiles` | `yamlFileToNix` | `yamlFileToNixList`
 
@@ -54,11 +54,10 @@ and resource namespace. In case of a non-namespaced resource, the kind is repeat
 
 [.underline]#*From YAML*# functions:
 
-* <<_yamlfiletomultijsonfiles,`yamlFileToMultiJsonFiles`>>
-* <<_yamlfiletonix,`yamlFileToNix`>>
-* <<_yamlfiletonixlist,`yamlFileToNixList`>>
 * <<yamlToJson,`yamlToJson`>>
 * <<yamlToJsonFile,`yamlToJsonFile`>>
+* <<_yamlfiletonix,`yamlFileToNix`>>
+* <<_yamlfiletonixlist,`yamlFileToNixList`>>
 * <<_yamltomultijsonfilepaths,`yamlToMultiJsonFilePaths`>>
 * <<_yamltomultijsonfiles,`yamlToMultiJsonFiles`>>
 * <<_yamltonix,`yamlToNix`>>
@@ -490,7 +489,6 @@ builtins.readFile yamlToJsonFile { yamlContent = builtins.readFile ./services.ym
           "{ items:. }"
         else
           throw "Unknown output type ${outputType}";
-
       jqCommand = "${pkgs.jq}/bin/jq -n '[inputs] | if length == 1 then .[0] else ${jqReturnValue} end | .'";
     in
     pkgs.stdenv.mkDerivation {
@@ -500,9 +498,6 @@ builtins.readFile yamlToJsonFile { yamlContent = builtins.readFile ./services.ym
       phases = [ "installPhase" ];
       installPhase = "${pkgs.yq-go}/bin/yq $sourcePath -p yaml -o json | ${jqCommand} > $out";
     };
-
-
-
 }
 ----
 ====
@@ -510,9 +505,9 @@ builtins.readFile yamlToJsonFile { yamlContent = builtins.readFile ./services.ym
 '''
 
 === `yamlToMultiJsonFiles`
-The purpose of this function is to automate the creation of a set of files compatible with the https://github.com/kubernetes/kubernetes/blob/master/cluster/addons/addon-manager/README.md[Kubernetes AddonManager] which is the https://github.com/NixOS/nixpkgs/blob/046eee4ec50a7b86148b056d6ddb44c4fc9a6a15/nixos/modules/services/cluster/kubernetes/addon-manager.nix#L27[default way of installing addons if you're running Kubernetes bare metal on NixOS].
+<<wrapper,Wrapped>>. The purpose of this function is to automate the creation of a set of files compatible with the https://github.com/kubernetes/kubernetes/blob/master/cluster/addons/addon-manager/README.md[Kubernetes AddonManager] which is the https://github.com/NixOS/nixpkgs/blob/046eee4ec50a7b86148b056d6ddb44c4fc9a6a15/nixos/modules/services/cluster/kubernetes/addon-manager.nix#L27[default way of installing addons if you're running Kubernetes bare metal on NixOS].
 
-It turns some YAML content describing ONE OR MORE Kubernetes resources into as many JSON manifests as resources described. The return value is the [.underline]#*store path*# containing built files.
+It turns YAML source describing ONE OR MORE Kubernetes resources into as many JSON manifests as resources described. The return value is the [.underline]#*store path of the directory*# containing built files.
 
 
 [source,haskell]
@@ -523,24 +518,22 @@ yamlToMultiJsonFiles :: Attrset{ yamlContent, yqExpression ? null } -> Derivatio
 yamlToMultiJsonFiles, by default, uses the following https://github.com/mikefarah/yq[yq] expression: +
 `.metadata.name + "-" + (.kind | downcase) + "-" + (.metadata.namespace // (.kind | downcase))`
 
-Files are created as follows:
+Files in the directory are created as follows:
 
-* The *filename* is, by default, the string interpolation of resource name, resource kind and resource namespace. In case of a non-namespaced resource, the kind is repeated.
- * The *value* is the content of the file itself
+* The *filename* is, by default, the string interpolation of resource name, resource kind and resource namespace. In case of a non-namespaced resource, the kind is repeated. Customizable through _yqExpression_.
+ * The *value* is the content of the file itself.
 
-The input is an Attrset of:
+As an input it supports an Attrset of:
 
 * *yamlContent*: YAML content as string
 * *yqExpression*: yqExpression override in case you want a different naming.
-
-
 
 .example
 [%collapsible]
 ====
 [source,nix]
 ----
-builtins.attrNames (builtins.readDir ( yamlToMultiJsonFiles { yamlContent = builtins.readFile ./services.yml; } ))
+builtins.attrNames (builtins.readDir ( yamlToMultiJsonFiles { source = builtins.readFile ./services.yml; } ))
 
 [
   "myapp-jobscheduler-service-myapp.json"
@@ -556,9 +549,15 @@ builtins.attrNames (builtins.readDir ( yamlToMultiJsonFiles { yamlContent = buil
 [source,nix]
 ----
 {
-  yamlToMultiJsonFiles =
+  yamlToMultiJsonFiles = args: wrapF args _yamlToMultiJsonFiles;
+
+  # Turns some YAML content describing ONE OR MORE Kubernetes resources
+  # into as many JSON manifests as resources described. The RETURN VALUE is
+  # the STORE PATH to the directory containing built files.
+  # This function is useful for directly working with Kubernetes AddonManager.
+  _yamlToMultiJsonFiles =
     {
-      yamlContent,
+      source,
       yqExpression ? null,
     }:
     let
@@ -570,13 +569,13 @@ builtins.attrNames (builtins.readDir ( yamlToMultiJsonFiles { yamlContent = buil
     in
     pkgs.stdenv.mkDerivation {
       name = "yaml2multijsonfile";
-      inherit yamlContent;
-      passAsFile = [ "yamlContent" ];
+      inherit source;
+      passAsFile = [ "source" ];
       phases = [ "buildPhase" ];
       buildPhase = ''
         mkdir $out
         cd $out
-        ${pkgs.yq-go}/bin/yq -p yaml -o json -s '${yqExpr}' $yamlContentPath
+        ${pkgs.yq-go}/bin/yq -p yaml -o json -s '${yqExpr}' $sourcePath
       '';
     };
 }
@@ -960,46 +959,6 @@ builtins.readFile (jsonFileToYamlFile { path = ./services.json; topLevelKey = "s
   jsonFileToYamlFile =
     { path, topLevelKey ? null }@args:
     kallPackage args jsonToYamlFile { jsonContent = builtins.readFile path; };
-}
-----
-====
-
-'''
-
-
-=== `yamlFileToMultiJsonFiles`
-Same as yamlToMultiJsonFiles but with a path as an input, reading the file is handled internally. It does store data in the [.underline]#*nix store*#.
-
-[source,haskell]
-----
-yamlFileToMultiJsonFiles :: Attrset { path, yqExpression ? null } -> Derivation
-----
-
-.example
-[%collapsible]
-====
-[source,nix]
-----
-builtins.attrNames (builtins.readDir (klib.yamlFileToMultiJsonFiles { path = ./services.yml; }))
-[
-  "myapp-jobscheduler-service-myapp.json"
-  "myapp-service-myapp.json"
-]
-----
-====
-
-.implementation
-[%collapsible]
-====
-[source,nix]
-----
-{
-  yamlFileToMultiJsonFiles =
-    {
-      path,
-      yqExpression ? null,
-    }@args:
-    callWithYamlContent args yamlToMultiJsonFiles;
 }
 ----
 ====
