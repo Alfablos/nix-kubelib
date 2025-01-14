@@ -59,7 +59,7 @@ and resource namespace. In case of a non-namespaced resource, the kind is repeat
 * <<_yamlfiletonix,`yamlFileToNix`>>
 * <<_yamlfiletonixlist,`yamlFileToNixList`>>
 * <<_yamltomultijsonfilepaths,`yamlToMultiJsonFilePaths`>>
-* <<_yamltomultijsonfiles,`yamlToMultiJsonFiles`>>
+* <<yamlToMultiJsonFiles,`yamlToMultiJsonFiles`>>
 * <<_yamltonix,`yamlToNix`>>
 * <<_yamltonixlist,`yamlToNixList`>>
 
@@ -504,6 +504,7 @@ builtins.readFile yamlToJsonFile { yamlContent = builtins.readFile ./services.ym
 
 '''
 
+[#yamlToMultiJsonFiles]
 === `yamlToMultiJsonFiles`
 <<wrapper,Wrapped>>. The purpose of this function is to automate the creation of a set of files compatible with the https://github.com/kubernetes/kubernetes/blob/master/cluster/addons/addon-manager/README.md[Kubernetes AddonManager] which is the https://github.com/NixOS/nixpkgs/blob/046eee4ec50a7b86148b056d6ddb44c4fc9a6a15/nixos/modules/services/cluster/kubernetes/addon-manager.nix#L27[default way of installing addons if you're running Kubernetes bare metal on NixOS].
 
@@ -512,10 +513,10 @@ It turns YAML source describing ONE OR MORE Kubernetes resources into as many JS
 
 [source,haskell]
 ----
-yamlToMultiJsonFiles :: Attrset{ yamlContent, yqExpression ? null } -> Derivation
+yamlToMultiJsonFiles :: wrapped -> Derivation
 ----
 
-yamlToMultiJsonFiles, by default, uses the following https://github.com/mikefarah/yq[yq] expression: +
+yamlToMultiJsonFiles, by default, uses the following https://github.com/mikefarah/yq[yq] expression to compute filenames: +
 `.metadata.name + "-" + (.kind | downcase) + "-" + (.metadata.namespace // (.kind | downcase))`
 
 Files in the directory are created as follows:
