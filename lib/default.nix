@@ -1,48 +1,14 @@
 { pkgs, lib, ... }:
 with builtins;
 let
-  kallPackage =
-    incomingArgs: f: overrides:
-    let
-      fArgs = functionArgs f;
-      finalArgs = intersectAttrs fArgs incomingArgs // overrides; # Merge with overrides happens last
-    in
-    f finalArgs;
-
-  readPathAndThen = path: f: f (readFile path);
-
-  # Allows to call a function in two ways:
-  # - f /some/path or f (builtins.readFile /some/path) or f (drv)
-  # - f { arg1 = "val1"; arg2 = "val2"; ... }
-  # while calling the downstream function with a unified interface.
-  resolveArgs = args: if isAttrs args then args else { source = args; };
-
-  # Caller calls a function with { source, ... }@args
-  # if a path is detected, the content is read before calling the downstream.
-  # If args is Attrset then proceed, if not turn it into an Attrset with defaults
-  wrapF =
-    args: f:
-    let
-      finalArgs = resolveArgs args;
-      sourceIsPath = isPath finalArgs.source;
-    in
-    if sourceIsPath then
-      kallPackage finalArgs f { source = readFile finalArgs.source; }
-    else
-      kallPackage finalArgs f { };
-
-  getGeneratedFiles =
-    with builtins;
-    drv:
-    let
-      fileRelPaths = attrNames (readDir drv.outPath);
-    in
-    map (file: drv.outPath + "/" + file) fileRelPaths;
-
-  jsonIsList = source: isList (fromJSON source);
-
+  inherit (import ./helpers.nix)
+    kallPackage
+    readPathAndThen
+    wrapF
+    ;
 in
 rec {
+
   helm = pkgs.callPackage ./helm.nix { inherit nixToYaml; };
 
   # Turns a Nix list into a generic Kubernetes Resource List
@@ -52,15 +18,16 @@ rec {
     inherit items;
   };
 
+  keyValFromJsonManifest = args: wrapF args _keyValFromJsonManifest;
   # Takes a JSON kubernetes manifests and builds a key-value pair
   # from the manifest.
   # - The VALUE is the content of the file itself
   # - The KEY is the string interpolation of resource name, resource kind
   #   and resource namespace. In case of a non-namespaced resource, the kind is repeated
-  keyValFromJsonManifest =
-    input:
+  _keyValFromJsonManifest =
+    { source }:
     let
-      nixData = fromJSON input;
+      nixData = fromJSON source;
       process =
         c:
         let
@@ -87,6 +54,8 @@ rec {
     in
     lib.attrsets.mergeAttrsList (lib.lists.flatten pathList);
 
+  yamlToJsonFile = args: wrapF args _yamlToJsonFile;
+
   # Turns some YAML content describing ONE OR MORE kubernetes resources
   # into a SINGLE JSON file in the store.
   # In case of more than one resource the default output is a JSON ARRAY (not an object).
@@ -109,14 +78,13 @@ rec {
       jqCommand = "${pkgs.jq}/bin/jq -n '[inputs] | if length == 1 then .[0] else ${jqReturnValue} end | .'";
     in
     pkgs.stdenv.mkDerivation {
-      name = "yaml2jsonfile";
+      name = "yaml2jsonfile.json";
       inherit source;
       passAsFile = [ "source" ];
       phases = [ "installPhase" ];
       installPhase = "${pkgs.yq-go}/bin/yq $sourcePath -p yaml -o json | ${jqCommand} > $out";
     };
 
-  yamlToJsonFile = args: wrapF args _yamlToJsonFile;
 
   # Turns some YAML content describing ONE OR MORE Kubernetes resources
   # into as many JSON manifests as resources described. The RETURN VALUE is
@@ -152,7 +120,7 @@ rec {
     {
       source,
       yqExpression ? null,
-    }@args:
+    }:
     getGeneratedFiles (yamlToMultiJsonFiles {
       inherit source yqExpression;
     });

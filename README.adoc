@@ -82,6 +82,33 @@ and resource namespace. In case of a non-namespaced resource, the kind is repeat
 
 * <<_tolist,`toList`>>
 
+=== Functions Signatures
+A wrapper around many functions takes care of adding additional flexibility while calling them. +
+For example you can call _yamlToJsonFile_ in several ways depending on what kind of input you have and how clean you want to keep your code while not needing additional control. Even the _source_ parameter can have multiple forms:
+
+[source,haskell]
+----
+yamlToJsonFile :: Path => Derivation
+yamlToJsonFile :: String => Derivation
+yamlToJsonFile :: [ Path ] => Derivation
+yamlToJsonFile :: [ String ] => Derivation
+yamlToJsonFile :: Attrset { source, outputType ? null } => Derivation
+yamlToJsonFile :: [ Attrset { source (Path), outputType ? null } ] => Derivation
+yamlToJsonFile :: [ Attrset { source (String), outputType ? null } ++ Path ++ String ] => Derivation
+----
+
+For example these are all valid methods:
+
+[source,nix]
+----
+yamlToJsonFile ./tests/server-cert.yml                          # path
+yamlToJsonFile (builtins.readFile ./tests/server-cert.yml)      # string
+yamlToJsonFile [ ./tests/server-cert.yml ./tests/services.yml ./another/path.nix ] # paths
+yamlToJsonFile [ (builtins.readFile ./tests/server-cert.yml)  (builtins.readFile ./tests/services.yml) ]                                         # strings
+yamlToJsonFile { source = ./tests/services.yml; outputType = "object"; }    # Attrset
+yamlToJsonFile [ { source = ./tests/server-cert.yml; } { source = builtins.readFile ./tests/services.yml; } ]      # Attrsets
+yamlToJsonFile [ { source = ./tests/services.yml; outputType = "object"; } ./tests/services.yml (builtins.readFile ./tests/server-cert.yml) ]   # mix
+----
 
 
 === Helm lib

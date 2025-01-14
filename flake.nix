@@ -14,7 +14,7 @@
       let
         system = "x86_64-linux";
         pkgs = import nixpkgs { inherit system; };
-        # inherit (pkgs) lib;
+        inherit (pkgs) lib;
         kubelib = pkgs.callPackage ./lib { };
       in
       {
@@ -22,6 +22,19 @@
         packages.lib = kubelib;
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [ yq-go ];
+        };
+        packages.test = with kubelib;
+        let
+          jFiles = yamlToJsonFile [ ./tests/services.yml (builtins.readFile ./tests/server-cert.yml) ];
+        in
+        pkgs.stdenv.mkDerivation {
+          name = "jsonFiles";
+          inherit jFiles;
+          phases = [ "installPhase" ];
+          installPhase = ''
+            mkdir $out
+            ${ lib.strings.concatStringsSep "\n" (map (f: "cp " + f + " $out") jFiles) }
+          '';
         };
       }
 
