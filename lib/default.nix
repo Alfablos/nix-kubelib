@@ -11,7 +11,20 @@ let
 
   readPathAndThen = path: f: f (readFile path);
 
-  callWithYamlContent = args: f: kallPackage args f { yamlContent = readFile args.path; };
+  # Caller calls a function with { source, ... }@args
+  # if a path is detected, the content is read before calling the downstream.
+  # If args is Attrset then proceed, if not turn it into an Attrset with defaults
+  resolveSource =
+    args: f:
+    let
+      finalArgs = if isAttrs args
+        then args
+        else { source = args; };
+    in
+    if isPath finalArgs.source then
+      kallPackage finalArgs f { source = readFile args.source; }
+    else
+      kallPackage finalArgs f { };
 
   getGeneratedFiles =
     with builtins;
@@ -20,9 +33,8 @@ let
       fileRelPaths = attrNames (readDir drv.outPath);
     in
     map (file: drv.outPath + "/" + file) fileRelPaths;
-    
-  jsonIsList = jsonContent:
-    isList (fromJSON jsonContent);
+
+  jsonIsList = source: isList (fromJSON source);
 
 in
 rec {
@@ -59,7 +71,8 @@ rec {
     input:
     let
       nixData = fromJSON input;
-      process = c:
+      process =
+        c:
         let
           name = c.metadata.name;
           kind = lib.strings.toLower c.kind;
@@ -73,7 +86,6 @@ rec {
         nixContent: if isList nixContent then map (cont: process cont) nixContent else process nixContent;
     in
     f nixData;
-
 
   keyValFromJsonManifestFile = path: readPathAndThen path keyValFromJsonManifest;
   # Same as kkeyValFromJsonManifest but deals with list of resources
@@ -91,28 +103,31 @@ rec {
   # Call the function with "object" as an outputType and an object with the following structure
   # will be returned: { "items": [ {...}, {...}, ... ] }
   yamlToJsonFile =
-    {
-      yamlContent,
-      outputType ? "array",
-    }:
-    let
-      jqReturnValue =
-        if outputType == "array" then
-          "."
-        else if outputType == "object" then
-          "{ items:. }"
-        else
-          throw "Unknown output type ${outputType}";
+    args:
+    resolveSource args (
+      {
+        source,
+        outputType ? "array",
+      }:
+      let
+        jqReturnValue =
+          if outputType == "array" then
+            "."
+          else if outputType == "object" then
+            "{ items:. }"
+          else
+            throw "Unknown output type ${outputType}";
 
-      jqCommand = "${pkgs.jq}/bin/jq -n '[inputs] | if length == 1 then .[0] else ${jqReturnValue} end | .'";
-    in
-    pkgs.stdenv.mkDerivation {
-      name = "yaml2jsonfile";
-      inherit yamlContent;
-      passAsFile = [ "yamlContent" ];
-      phases = [ "installPhase" ];
-      installPhase = "${pkgs.yq-go}/bin/yq $yamlContentPath -p yaml -o json | ${jqCommand} > $out";
-    };
+        jqCommand = "${pkgs.jq}/bin/jq -n '[inputs] | if length == 1 then .[0] else ${jqReturnValue} end | .'";
+      in
+      pkgs.stdenv.mkDerivation {
+        name = "yaml2jsonfile";
+        inherit source;
+        passAsFile = [ "source" ];
+        phases = [ "installPhase" ];
+        installPhase = "${pkgs.yq-go}/bin/yq $sourcePath -p yaml -o json | ${jqCommand} > $out";
+      }
+    );
 
   # Turns some YAML content describing ONE OR MORE Kubernetes resources
   # into as many JSON manifests as resources described. The RETURN VALUE is
@@ -120,7 +135,7 @@ rec {
   # This function is useful for directly working with Kubernetes AddonManager.
   yamlToMultiJsonFiles =
     {
-      yamlContent,
+      source,
       yqExpression ? null,
     }:
     let
@@ -132,13 +147,13 @@ rec {
     in
     pkgs.stdenv.mkDerivation {
       name = "yaml2multijsonfile";
-      inherit yamlContent;
-      passAsFile = [ "yamlContent" ];
+      inherit source;
+      passAsFile = [ "source" ];
       phases = [ "buildPhase" ];
       buildPhase = ''
         mkdir $out
         cd $out
-        ${pkgs.yq-go}/bin/yq -p yaml -o json -s '${yqExpr}' $yamlContentPath
+        ${pkgs.yq-go}/bin/yq -p yaml -o json -s '${yqExpr}' $sourcePath
       '';
     };
 
@@ -146,27 +161,27 @@ rec {
   # NIX LIST (cannot be used with nix build and so on) of ABSOLUTE paths to JSON files.
   yamlToMultiJsonFilePaths =
     {
-      yamlContent,
+      source,
       yqExpression ? null,
     }@args:
     getGeneratedFiles (yamlToMultiJsonFiles {
-      inherit yamlContent yqExpression;
+      inherit source yqExpression;
     });
 
   # Converts YAML content to a Nix list forcing the output to be a list.
   # So even if a single object is passed the result will be a Nix list
   # with a single Attrset in it.
   yamlToNixList =
-    yamlContent:
+    source:
     let
-      fileAbsPaths = yamlToMultiJsonFilePaths { inherit yamlContent; };
+      fileAbsPaths = yamlToMultiJsonFilePaths { inherit source; };
     in
     map (path: readPathAndThen path fromJSON) fileAbsPaths;
 
   # Converts YAML content to JSON.
   yamlToJson =
     {
-      yamlContent,
+      source,
       outputType ? "array",
     }@args:
     let
@@ -177,33 +192,69 @@ rec {
   # Converts YAML content (object or list) to Nix. Evaluates to a list anyway if the
   # input is a list of objects.
   yamlToNix =
-    yamlContent:
+    source:
     fromJSON (yamlToJson {
-      inherit yamlContent;
+      inherit source;
     });
+
+  # Converts Nix to YAML.
+  nixToYaml =
+    attrs:
+    let
+      j = toJSON attrs;
+    in
+    pkgs.stdenv.mkDerivation {
+      inherit j;
+      name = "nixtoYaml";
+      passAsFile = [ "j" ];
+      phases = [ "buildPhase" ];
+      buildPhase = "${pkgs.yq-go}/bin/yq -p json -o yaml $jPath > $out";
+    };
+
+  jsonToYaml =
+    {
+      source,
+      topLevelKey ? null,
+    }@args:
+    readFile (kallPackage args jsonToYamlFile { });
+
+  jsonToYamlFile =
+    {
+      source,
+      topLevelKey ? null,
+    }:
+    pkgs.stdenv.mkDerivation rec {
+      name = "json2yaml";
+      inherit source topLevelKey;
+      passAsFile = [ "source" ];
+      phases = [ "installPhase" ];
+      yqTransform =
+        if topLevelKey != null && jsonIsList source then "--expression '{ \"${topLevelKey}\":. }'" else "";
+      installPhase = "${pkgs.yq-go}/bin/yq $sourcePath -p json -o yaml ${yqTransform} > $out";
+    };
 
   # Same as yamlToJson but for reading files directly.
   yamlFileToJson =
     {
-      path,
+      source,
       outputType ? "array",
     }@args:
-    callWithYamlContent args yamlToJson;
+    resolveSource args yamlToJson;
 
   # Same as yamlToJsonFiles but for reading files directly.
   yamlFileToJsonFile =
     {
-      path,
+      source,
       outputType ? "array",
     }@args:
-    callWithYamlContent args yamlToJsonFile;
+    resolveSource args yamlToJsonFile;
   # Same as yyamlToMultiJsonFiles but for reading files directly.
   yamlFileToMultiJsonFiles =
     {
-      path,
+      source,
       yqExpression ? null,
     }@args:
-    callWithYamlContent args yamlToMultiJsonFiles;
+    resolveSource args yamlToMultiJsonFiles;
 
   # Same as yamlToNix but for reading files directly.
   yamlFileToNix = path: readPathAndThen path yamlToNix;
@@ -211,42 +262,10 @@ rec {
   # Sane as yyamlFileToNixList but for reading files directly.
   yamlFileToNixList = path: readPathAndThen path yamlToNixList;
 
-  # Converts Nix to YAML.
-  nixToYaml =
-    attrs:
-    let
-      jsonContent = toJSON attrs;
-    in
-    pkgs.stdenv.mkDerivation {
-      inherit jsonContent;
-      name = "nixtoYaml";
-      passAsFile = [ "jsonContent" ];
-      phases = [ "buildPhase" ];
-      buildPhase = "${pkgs.yq-go}/bin/yq -p json -o yaml $jsonContentPath > $out";
-    };
-
-  jsonToYaml =
-    {
-      jsonContent,
-      topLevelKey ? null
-    }@args:
-    readFile ( kallPackage args jsonToYamlFile { } );
-
-  jsonToYamlFile =
-    {
-      jsonContent,
-      topLevelKey ? null,
-    }:
-    pkgs.stdenv.mkDerivation rec {
-      name = "json2yaml";
-      inherit jsonContent topLevelKey;
-      passAsFile = [ "jsonContent" ];
-      phases = [ "installPhase" ];
-      yqTransform = if topLevelKey != null && jsonIsList jsonContent then "--expression '{ \"${topLevelKey}\":. }'" else "";
-      installPhase = "${pkgs.yq-go}/bin/yq $jsonContentPath -p json -o yaml ${yqTransform} > $out";
-    };
-
   jsonFileToYamlFile =
-    { path, topLevelKey ? null }@args:
-    kallPackage args jsonToYamlFile { jsonContent = builtins.readFile path; };
+    {
+      path,
+      topLevelKey ? null,
+    }@args:
+    kallPackage args jsonToYamlFile { source = builtins.readFile path; };
 }
