@@ -4,6 +4,7 @@ let
   inherit (import ./helpers.nix)
     kallPackage
     readPathAndThen
+    getGeneratedFiles
     wrapF
     ;
 in
@@ -117,15 +118,14 @@ rec {
     };
 
   # Same as yamlToMultiJsonFiles but the RETURN VALUE is a
-  # NIX LIST (cannot be used with nix build and so on) of ABSOLUTE paths to JSON files.
+  # list of ABSOLUTE paths to JSON files.
   yamlToMultiJsonFilePaths =
-    {
-      source,
-      yqExpression ? null,
-    }:
-    getGeneratedFiles (yamlToMultiJsonFiles {
-      inherit source yqExpression;
-    });
+    args:
+    let process = as: getGeneratedFiles (wrapF as _yamlToMultiJsonFiles);
+    in
+    if isList args
+    then lib.lists.flatten (map process args)
+    else process args;
 
   # Converts YAML content to a Nix list forcing the output to be a list.
   # So even if a single object is passed the result will be a Nix list
@@ -143,7 +143,7 @@ rec {
     if isList args
     then
       let paths = map (a: wrapF a _yamlToJsonFile) args;
-      in map builtins.readFile paths
+      in map builtins.readFile paths    # No need to flatten, nested objects in a file remain in the generated file contents
     else readFile (wrapF args _yamlToJsonFile);
 
   # Converts YAML content (object or list) to Nix. Evaluates to a list anyway if the

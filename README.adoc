@@ -58,7 +58,7 @@ and resource namespace. In case of a non-namespaced resource, the kind is repeat
 * <<yamlToJsonFile,`yamlToJsonFile`>>
 * <<_yamlfiletonix,`yamlFileToNix`>>
 * <<_yamlfiletonixlist,`yamlFileToNixList`>>
-* <<_yamltomultijsonfilepaths,`yamlToMultiJsonFilePaths`>>
+* <<yamlToMultiJsonFilePaths,`yamlToMultiJsonFilePaths`>>
 * <<yamlToMultiJsonFiles,`yamlToMultiJsonFiles`>>
 * <<_yamltonix,`yamlToNix`>>
 * <<_yamltonixlist,`yamlToNixList`>>
@@ -360,7 +360,7 @@ keyValFromJsonManifestFiles [ ./server-cert.json ./services.json ]
 '''
 [#yamlToJson]
 === `yamlToJson`
-<<wrapper,Wrapped>>. Turns input YAML into JSON.  It does store data in the [.underline]#*nix store*#.
+<<wrapper,Wrapped>>. Turns input YAML into JSON. It does store data in the [.underline]#*nix store*#.
 
 [source,haskell]
 ----
@@ -432,7 +432,7 @@ cheduler\",\n      \"namespace\": \"myapp\",\n      \"labels\": {\n        \"app
 
 [#yamlToJsonFile]
 === `yamlToJsonFile`
-<<wrapper,Wrapped>>. Similar to yamlToJson but turns input YAML into a _single_ JSON file [.underline]#*in the store*#.
+<<wrapper,Wrapped>>. Similar to yamlToJson but turns input YAML into a _single_ JSON file [.underline]#*in the store*# so it does store data in the [.underline]#*nix store*#.
 
 [source,haskell]
 ----
@@ -585,14 +585,15 @@ builtins.attrNames (builtins.readDir ( yamlToMultiJsonFiles { source = builtins.
 
 '''
 
+[#yamlToMultiJsonFilePaths]
 === `yamlToMultiJsonFilePaths`
-It turns some YAML content describing ONE OR MORE Kubernetes resources into as many JSON manifests as resources described. The return value is a list of [.underline]#*store paths*# containing built files.
+It turns YAML source describing ONE OR MORE Kubernetes resources into as many JSON manifests as resources described. The return value is a list of [.underline]#*absolute store paths*# containing *built files*. This function, unlike <<yamlToMultiJsonFiles,yamlToMultiJsonFiles>>, returns the list of built files. It does store data in the [.underline]#*nix store*#.
 
 It uses yamlToMultiJsonFiles under the hood, inputs and logic are the same.
 
 [source,haskell]
 ----
-yamlToMultiJsonFiles :: Attrset{ yamlContent, yqExpression ? null } -> [String]
+yamlToMultiJsonFilePaths :: wrapped -> [String]
 ----
 
 .example
@@ -600,11 +601,12 @@ yamlToMultiJsonFiles :: Attrset{ yamlContent, yqExpression ? null } -> [String]
 ====
 [source,nix]
 ----
-yamlToMultiJsonFilePaths { yamlContent = builtins.readFile ./services.yml; }
+yamlToMultiJsonFilePaths [ ./tests/services.yml { source = ./tests/server-cert.yml; yqExpression = ".metadata.name + \"_\" + (.kind | downcase)"; } ]
 
 [
-  "/nix/store/7c6px9in1i05bl3r2j9jym564vhhpzs0-yaml2multijsonfile/myapp-jobscheduler-service-myapp.json"
-  "/nix/store/7c6px9in1i05bl3r2j9jym564vhhpzs0-yaml2multijsonfile/myapp-service-myapp.json"
+  "/nix/store/i91miasj2chzch49vnamc8ks0s5sndky-yaml2multijsonfile/myapp-jobscheduler-service-myapp.json"
+  "/nix/store/i91miasj2chzch49vnamc8ks0s5sndky-yaml2multijsonfile/myapp-service-myapp.json"
+  "/nix/store/hwfnzlkhxapilgmp7m2b9v5ngb87ryv1-yaml2multijsonfile/mypp-serverauth_certificate.json"
 ]
 ----
 ====
@@ -616,15 +618,15 @@ yamlToMultiJsonFilePaths { yamlContent = builtins.readFile ./services.yml; }
 [source,nix]
 ----
 {
+  # Same as yamlToMultiJsonFiles but the RETURN VALUE is a
+  # list of ABSOLUTE paths to JSON files.
   yamlToMultiJsonFilePaths =
-    {
-      yamlContent,
-      yqExpression ? null,
-    }@args:
-    getGeneratedFiles (yamlToMultiJsonFiles {
-      inherit yamlContent yqExpression;
-    });
-
+    args:
+    let process = as: getGeneratedFiles (wrapF as _yamlToMultiJsonFiles);
+    in
+    if isList args
+    then lib.lists.flatten (map process args)
+    else process args;
 }
 ----
 ====
