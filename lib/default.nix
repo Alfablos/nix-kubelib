@@ -11,18 +11,23 @@ let
 
   readPathAndThen = path: f: f (readFile path);
 
+  # Allows to call a function in two ways:
+  # - f /some/path or f (builtins.readFile /some/path) or f (drv)
+  # - f { arg1 = "val1"; arg2 = "val2"; ... }
+  # while calling the downstream function with a unified interface.
+  resolveArgs = args: if isAttrs args then args else { source = args; };
+
   # Caller calls a function with { source, ... }@args
   # if a path is detected, the content is read before calling the downstream.
   # If args is Attrset then proceed, if not turn it into an Attrset with defaults
-  resolveSource =
+  wrapF =
     args: f:
     let
-      finalArgs = if isAttrs args
-        then args
-        else { source = args; };
+      finalArgs = resolveArgs args;
+      sourceIsPath = isPath finalArgs.source;
     in
-    if isPath finalArgs.source then
-      kallPackage finalArgs f { source = readFile args.source; }
+    if sourceIsPath then
+      kallPackage finalArgs f { source = readFile finalArgs.source; }
     else
       kallPackage finalArgs f { };
 
@@ -39,21 +44,6 @@ let
 in
 rec {
   helm = pkgs.callPackage ./helm.nix { inherit nixToYaml; };
-  # recurseKeys = elem:
-  #   # let
-  #   #   baseCase = elem;
-  #   #   recursiveCase = recurseKeys elem;
-  #   # in
-  #   # if lib.isAttrs val => recurse and then keys (val)
-  #   lib.attrsets.foldlAttrs
-  #     (acc: key: val:
-  #       let subsequent = s: if (lib.isAttrs s) then (recurseKeys s) else {};
-  #       in
-  #     {
-  #       keys = acc.keys ++ [ key ] ++ (lib.attrNames (subsequent val));
-  #     })
-  #     { keys = []; }
-  #     elem;
 
   # Turns a Nix list into a generic Kubernetes Resource List
   toList = items: {
@@ -102,32 +92,31 @@ rec {
   # In case of more than one resource the default output is a JSON ARRAY (not an object).
   # Call the function with "object" as an outputType and an object with the following structure
   # will be returned: { "items": [ {...}, {...}, ... ] }
-  yamlToJsonFile =
-    args:
-    resolveSource args (
-      {
-        source,
-        outputType ? "array",
-      }:
-      let
-        jqReturnValue =
-          if outputType == "array" then
-            "."
-          else if outputType == "object" then
-            "{ items:. }"
-          else
-            throw "Unknown output type ${outputType}";
+  _yamlToJsonFile =
+    {
+      source,
+      outputType ? "array",
+    }:
+    let
+      jqReturnValue =
+        if outputType == "array" then
+          "."
+        else if outputType == "object" then
+          "{ items:. }"
+        else
+          throw "Unknown output type ${outputType}";
 
-        jqCommand = "${pkgs.jq}/bin/jq -n '[inputs] | if length == 1 then .[0] else ${jqReturnValue} end | .'";
-      in
-      pkgs.stdenv.mkDerivation {
-        name = "yaml2jsonfile";
-        inherit source;
-        passAsFile = [ "source" ];
-        phases = [ "installPhase" ];
-        installPhase = "${pkgs.yq-go}/bin/yq $sourcePath -p yaml -o json | ${jqCommand} > $out";
-      }
-    );
+      jqCommand = "${pkgs.jq}/bin/jq -n '[inputs] | if length == 1 then .[0] else ${jqReturnValue} end | .'";
+    in
+    pkgs.stdenv.mkDerivation {
+      name = "yaml2jsonfile";
+      inherit source;
+      passAsFile = [ "source" ];
+      phases = [ "installPhase" ];
+      installPhase = "${pkgs.yq-go}/bin/yq $sourcePath -p yaml -o json | ${jqCommand} > $out";
+    };
+
+  yamlToJsonFile = args: wrapF args _yamlToJsonFile;
 
   # Turns some YAML content describing ONE OR MORE Kubernetes resources
   # into as many JSON manifests as resources described. The RETURN VALUE is
@@ -239,22 +228,15 @@ rec {
       source,
       outputType ? "array",
     }@args:
-    resolveSource args yamlToJson;
+    wrapF args yamlToJson;
 
-  # Same as yamlToJsonFiles but for reading files directly.
-  yamlFileToJsonFile =
-    {
-      source,
-      outputType ? "array",
-    }@args:
-    resolveSource args yamlToJsonFile;
   # Same as yyamlToMultiJsonFiles but for reading files directly.
   yamlFileToMultiJsonFiles =
     {
       source,
       yqExpression ? null,
     }@args:
-    resolveSource args yamlToMultiJsonFiles;
+    wrapF args yamlToMultiJsonFiles;
 
   # Same as yamlToNix but for reading files directly.
   yamlFileToNix = path: readPathAndThen path yamlToNix;
@@ -269,3 +251,5 @@ rec {
     }@args:
     kallPackage args jsonToYamlFile { source = builtins.readFile path; };
 }
+
+

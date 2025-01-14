@@ -24,7 +24,7 @@ The library has 2 main focuses: one is handling YAML, JSON and Nix conversions, 
 
 | YAML content (multiple objects) | - | `yamlToJson` | `yamlToJsonFile` | `yamlToMultiJsonFiles` | `yamlToNix` | `yamlToNixList`
 
-| YAML file (single object) | - | `yamlFileToJson` | `yamlFileToJsonFile` | `yamlFileToMultiJsonFiles` | `yamlFileToNix` | `yamlFileToNixList`
+| YAML file (single object) | - | `yamlFileToJson` | `yamlToJsonFile` | `yamlFileToMultiJsonFiles` | `yamlFileToNix` | `yamlFileToNixList`
 
 | YAML file (multiple objects) | - | `yamlFileToJson` | `yamlToJsonFile`| `yamlToMultiJsonFiles` | `yamlFileToNix` | `yamlFileToNixList`
 
@@ -53,8 +53,8 @@ and resource namespace. In case of a non-namespaced resource, the kind is repeat
 |===
 
 [.underline]#*From YAML*# functions:
+
 * <<_yamlfiletojson,`yamlFileToJson`>>
-* <<_yamlfiletojsonfile,`yamlFileToJsonFile`>>
 * <<_yamlfiletomultijsonfiles,`yamlFileToMultiJsonFiles`>>
 * <<_yamlfiletonix,`yamlFileToNix`>>
 * <<_yamlfiletonixlist,`yamlFileToNixList`>>
@@ -65,7 +65,7 @@ and resource namespace. In case of a non-namespaced resource, the kind is repeat
 * <<_yamltonix,`yamlToNix`>>
 * <<_yamltonixlist,`yamlToNixList`>>
 
-[.underline]#*From JSON*# functinos:
+[.underline]#*From JSON*# functions:
 
 * <<_jsonfiletoyamlfile,`jsonFileToYamlFile`>>
 * <<_jsontoyaml,`jsonToYaml`>>
@@ -343,7 +343,8 @@ Similar to yamlToJson but turns input YAML `content` into a _single_ JSON file [
 
 [source,haskell]
 ----
-yamlToJson :: Attrset{ path, outputType ? "array" } -> Derivation
+yamlToJson :: Attrset { source , outputType ? "array" } -> Derivation
+yamlToJson :: Path / String -> Derivation
 ----
 
 The input is an Attrset of:
@@ -892,42 +893,6 @@ yamlFileToJson { path = ./services.yml; outputType = "object"; }
       outputType ? "array",
     }@args:
     callWithYamlContent args yamlToJson;
-}
-----
-====
-
-'''
-
-=== `yamlFileToJsonFile`
-Same as yamlToJsonFile but with a path as an input, reading the file is handled internally. It does store data in the [.underline]#*nix store*#.
-
-[source,haskell]
-----
-yamlFileToJsonFile :: Attrset { path, outputType ? "array" } -> Derivation
-----
-
-.example
-[%collapsible]
-====
-[source,nix]
-----
-builtins.readFile (klib.yamlFileToJsonFile { path = ./services.yml; })
-"[\n  {\n    \"apiVersion\": \"v1\",\n    \"kind\": \"Service\",\n    \"metadata\": {\n      \"name\": \"myapp\",\n      \"namespace\": \"myapp\",\n      \"labels\": {\n        \"app\": \"myapp\",\n        \"component\": \"main\"\n      }\n    },\n    \"spec\": {\n      \"ports\": [\n        {\n          \"name\": \"http\",\n          \"port\": 80,\n          \"protocol\": \"TCP\",\n          \"targetPort\": \"http\"\n        },\n        {\n          \"name\": \"https\",\n          \"port\": 443,\n          \"protocol\": \"TCP\",\n          \"targetPort\": \"https\"\n        }\n      ],\n      \"selector\": {\n        \"app\": \"myapp\",\n        \"components\": \"main\"\n      }\n    }\n  },\n  {\n    \"apiVersion\": \"v1\",\n    \"kind\": \"Service\",\n    \"metadata\": {\n      \"name\": \"myapp-jobscheduler\",\n      \"namespace\": \"myapp\",\n      \"labels\": {\n        \"app\": \"myapp\",\n        \"component\": \"jobscheduler\"\n      }\n    },\n    \"spec\": {\n      \"ports\": [\n        {\n          \"name\": \"http\",\n          \"port\": 3000,\n          \"protocol\": \"TCP\",\n          \"targetPort\": \"http\"\n        }\n      ],\n      \"selector\": {\n        \"app\": \"myapp\",\n        \"component\": \"jobscheduler\"\n      }\n    }\n  }\n]\n"
-----
-====
-
-.implementation
-[%collapsible]
-====
-[source,nix]
-----
-{
-  yamlFileToJsonFile =
-    {
-      path,
-      outputType ? "array",
-    }@args:
-    callWithYamlContent args yamlToJsonFile;
 }
 ----
 ====
