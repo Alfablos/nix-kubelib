@@ -440,7 +440,7 @@ cheduler\",\n      \"namespace\": \"myapp\",\n      \"labels\": {\n        \"app
 yamlToJson :: wrapped -> Derivation
 ----
 
-As input it supports an Attrset of:
+As an input it supports an Attrset of:
 
 * *yamlContent*: YAML content as string
 * *outputType*, which only makes sense if you know the result will be a list:
