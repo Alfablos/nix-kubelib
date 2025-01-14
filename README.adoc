@@ -53,7 +53,6 @@ and resource namespace. In case of a non-namespaced resource, the kind is repeat
 |===
 
 [.underline]#*From YAML*# functions:
-
 * <<_yamlfiletojson,`yamlFileToJson`>>
 * <<_yamlfiletojsonfile,`yamlFileToJsonFile`>>
 * <<_yamlfiletomultijsonfiles,`yamlFileToMultiJsonFiles`>>
@@ -66,7 +65,7 @@ and resource namespace. In case of a non-namespaced resource, the kind is repeat
 * <<_yamltonix,`yamlToNix`>>
 * <<_yamltonixlist,`yamlToNixList`>>
 
-[.underline]#*From JSON* functinos:
+[.underline]#*From JSON*# functinos:
 
 * <<_jsonfiletoyamlfile,`jsonFileToYamlFile`>>
 * <<_jsontoyaml,`jsonToYaml`>>
