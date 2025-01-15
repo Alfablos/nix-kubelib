@@ -6,7 +6,7 @@ A set of tools to handle Kubernetes related resources and Nix, JSON and YAML con
 
 WARNING: this library makes use of https://github.com/mikefarah/yq[mikefarah/yq], *NOT* https://github.com/kislyuk/yq[kislyuk/yq]! Keep it in mind while troubleshooting.
 
-CAUTION: Many functions will [.underline]#*copy data to the Nix store*#
+CAUTION: Many functions will [.underline]#*copy data to the Nix store*#, which you may not want to allow. Those which do will be appropriately pointed out.
 
 Some functions are convenience wrappers around others, so you can keep the code cleaner.
 
@@ -63,8 +63,8 @@ and resource namespace. In case of a non-namespaced resource, the kind is repeat
 
 [.underline]#*From JSON*# functions:
 
-* <<_jsontoyaml,`jsonToYaml`>>
-* <<_jsontoyamlfile,`jsonToYamlFile`>>
+* <<jsonToYaml,`jsonToYaml`>>
+* <<jsonToYamlFile,`jsonToYamlFile`>>
 * <<_keyvalfromjsonmanifest,`keyValFromJsonManifest`>>
 * <<_keyvalfromjsonmanifestfile,`keyValFromJsonManifestFile`>>
 * <<_keyvalfromjsonmanifestfiles,`keyValFromJsonManifestFiles`>>
@@ -421,10 +421,13 @@ cheduler\",\n      \"namespace\": \"myapp\",\n      \"labels\": {\n        \"app
   # Converts YAML content to JSON.
   yamlToJson =
     args:
+    let
+      process = a: wrapF a _yamlToJsonFile;
+    in
     if isList args
     then
-      let paths = map (a: wrapF a _yamlToJsonFile) args;
-      in map builtins.readFile paths
+      let paths = map process args;
+      in map builtins.readFile paths    # No need to flatten, nested objects in a file remain in the generated file contents
     else readFile (wrapF args _yamlToJsonFile);
 }
 ----
@@ -491,6 +494,7 @@ builtins.readFile yamlToJsonFile { yamlContent = builtins.readFile ./services.ym
           "{ items:. }"
         else
           throw "Unknown output type ${outputType}";
+
       jqCommand = "${pkgs.jq}/bin/jq -n '[inputs] | if length == 1 then .[0] else ${jqReturnValue} end | .'";
     in
     pkgs.stdenv.mkDerivation {
@@ -915,21 +919,22 @@ jsonToYaml { jsonContent = builtins.readFile ./services.json; topLevelKey = "ser
 [source,nix]
 ----
 {
+  # Turns JSON source into YAML string
   jsonToYaml =
-    {
-      jsonContent,
-      topLevelKey ? null
-    }@args:
-    readFile ( kallPackage args jsonToYamlFile { } );
+    args:
+    let
+      result = wrapF args _jsonToYamlFile;
+    in
+    handleResult result readFile;
 }
 ----
 ====
 
 '''
 
-
+[#jsonToYamlFile]
 === `jsonToYamlFile`
-Same as jsonToYaml but stores the YAML content in a file.
+<<wrapper,Wrapped>>. Same as jsonToYaml but stores the YAML content in a file.
 
 It does store data in the [.underline]#*nix store*#.
 
@@ -955,17 +960,25 @@ builtins.readFile (jsonToYamlFile { jsonContent = builtins.readFile ./server-cer
 ----
 {
   jsonToYamlFile =
+    args:
+    handleResult (wrapF args _jsonToYamlFile) null;
+
+  _jsonToYamlFile =
     {
-      jsonContent,
+      source,
       topLevelKey ? null,
     }:
+    let
+      jsonIsList = j: isList (fromJSON j);
+    in
     pkgs.stdenv.mkDerivation rec {
       name = "json2yaml";
-      inherit jsonContent topLevelKey;
-      passAsFile = [ "jsonContent" ];
+      inherit source topLevelKey;
+      passAsFile = [ "source" ];
       phases = [ "installPhase" ];
-      yqTransform = if topLevelKey != null && jsonIsList jsonContent then "--expression '{ \"${topLevelKey}\":. }'" else "";
-      installPhase = "${pkgs.yq-go}/bin/yq $jsonContentPath -p json -o yaml ${yqTransform} > $out";
+      yqTransform =
+        if topLevelKey != null && jsonIsList source then "--expression '{ \"${topLevelKey}\":. }'" else "";
+      installPhase = "${pkgs.yq-go}/bin/yq $sourcePath -p json -o yaml ${yqTransform} > $out";
     };
 }
 ----
