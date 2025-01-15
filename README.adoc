@@ -1,4 +1,5 @@
 = Kubelib: Nix utilities for Kubernetes
+:toc:
 
 Inspired by https://github.com/farcaller/nix-kube-generators[farcaller/nix-kube-generators].
 
@@ -14,7 +15,8 @@ Some functions are convenience wrappers around others, so you can keep the code 
 * Nix standard library
 * nixpkgs standard library
 
-[%collapsible%]
+.Full list
+[%collapsible]
 ====
 * `lib.attrsets.attrNames`
 * `lib.attrsets.attrValues`
@@ -55,7 +57,7 @@ The library has 2 main focuses: one is handling YAML, JSON and Nix conversions, 
 .Additional utils
 [cols="1,4"]
 |===
-| `toList` | Turns a Nix list into the Nix equivalent of a Kubernetes resource list (kind: List).
+| `toKubernetesList` | Turns a Nix list into the Nix equivalent of a Kubernetes resource list (kind: List).
 
 | `keyValFromJsonManifest` |   Takes a JSON kubernetes manifests and builds a key-value pair
 from the manifest. Also deals with lists.
@@ -71,26 +73,26 @@ and resource namespace. In case of a non-namespaced resource, the kind is repeat
 
 [.underline]#*From YAML*# functions:
 
-* <<yamlToJson,`yamlToJson`>>
-* <<yamlToJsonFile,`yamlToJsonFile`>>
-* <<yamlToMultiJsonFilePaths,`yamlToMultiJsonFilePaths`>>
-* <<yamlToMultiJsonFiles,`yamlToMultiJsonFiles`>>
-* <<yamlToNix,`yamlToNix`>>
-* <<yamlToNixList,`yamlToNixList`>>
+* <<yamlToJson,yamlToJson>>
+* <<yamlToJsonFile,yamlToJsonFile>>
+* <<yamlToMultiJsonFilePaths,yamlToMultiJsonFilePaths>>
+* <<yamlToMultiJsonFiles,yamlToMultiJsonFiles>>
+* <<yamlToNix,yamlToNix>>
+* <<yamlToNixList,yamlToNixList>>
 
 [.underline]#*From JSON*# functions:
 
-* <<jsonToYaml,`jsonToYaml`>>
-* <<jsonToYamlFile,`jsonToYamlFile`>>
-* <<keyValFromJsonManifest,`keyValFromJsonManifest`>>
+* <<jsonToYaml,jsonToYaml>>
+* <<jsonToYamlFile,jsonToYamlFile>>
+* <<keyValFromJsonManifest,keyValFromJsonManifest>>
 
 [.underline]#*From Nix*# functions:
 
-* <<nixToYaml,`nixToYaml`>>
+* <<nixToYaml,nixToYaml>>
 
 [.underline]#*Others*#:
 
-* <<toList,`toList`>>
+* <<toKubernetesList,toKubernetesList>>
 
 === Functions Naming
 Where possible the following naming convention is used: `($inputFormat)To($outputFormat)(?Files?)`
@@ -185,15 +187,15 @@ rec {
 
 == Lib Functions
 
-[#toList]
-=== `toList`
+[#toKubernetesList]
+=== `toKubernetesList`
 Turns a Nix list into the Nix equivalent of a Kubernetes resource list (kind: List) by default. You can set the list type using the first argument ("List" will be appended) as well as including `{ Kind = "SomeValue"; } in the override argument, since it uses `lib.attrsets.recursiveUpdate`.
 
 Useful if you want to generate a single JSON file to feed to the Addon Manager.
 
 [source,haskell]
 ----
-toList :: (String / null) [a] (Attrset / null) -> kubernetes::ResourceList a
+toKubernetesList :: (String / null) [a] (Attrset / null) -> kubernetes::ResourceList a
 ----
 
 .example
@@ -201,7 +203,7 @@ toList :: (String / null) [a] (Attrset / null) -> kubernetes::ResourceList a
 ====
 [source,nix]
 ----
-toList "Pod" [{ apiVersion = "v1"; kind = "Pod"; }] { metadata.name = "my-pod-list"; }
+toKubernetesList "Pod" [{ apiVersion = "v1"; kind = "Pod"; }] { metadata.name = "my-pod-list"; }
 
 {
   apiVersion = "v1";
@@ -215,7 +217,7 @@ toList "Pod" [{ apiVersion = "v1"; kind = "Pod"; }] { metadata.name = "my-pod-li
   metadata = { name = "my-pod-list"; };
 }
 
-toList null [{ apiVersion = "v1"; kind = "Pod"; }] { metadata.name = "my-pod-list"; kind = "MyKindList"; }
+toKubernetesList null [{ apiVersion = "v1"; kind = "Pod"; }] { metadata.name = "my-pod-list"; kind = "MyKindList"; }
 
 {
   apiVersion = "v1";
@@ -238,7 +240,7 @@ toList null [{ apiVersion = "v1"; kind = "Pod"; }] { metadata.name = "my-pod-lis
 ----
 {
   # Turns a Nix list into a generic Kubernetes Resource List
-  toList =
+  toKubernetesList =
     resourceType: items: overrides:
     lib.attrsets.recursiveUpdate ({
       apiVersion = "v1";
