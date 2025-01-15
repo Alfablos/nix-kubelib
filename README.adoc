@@ -32,7 +32,7 @@ The library has 2 main focuses: one is handling YAML, JSON and Nix conversions, 
 
 | JSON content | `jsonToYaml` `jsonToYamlFile` | - | - | *no* | _builtin_ | _builtin_
 
-| JSON file | `jsonFileToYamlFile` | - | - | *no* | _builtin_ | _builtin_
+| JSON file | `jsonToYamlFile` | - | - | *no* | _builtin_ | _builtin_
 |===
 
 .Additional utils
@@ -63,7 +63,6 @@ and resource namespace. In case of a non-namespaced resource, the kind is repeat
 
 [.underline]#*From JSON*# functions:
 
-* <<_jsonfiletoyamlfile,`jsonFileToYamlFile`>>
 * <<_jsontoyaml,`jsonToYaml`>>
 * <<_jsontoyamlfile,`jsonToYamlFile`>>
 * <<_keyvalfromjsonmanifest,`keyValFromJsonManifest`>>
@@ -780,7 +779,7 @@ yamlToNix [ (builtins.readFile ./tests/services.yml) ./tests/server-cert.yml ]
 
 [#yamlToNixList]
 === `yamlToNixList`
-Same as yamlToNix but forces the output to be a List.
+<<wrapper,Wrapped>>. Same as yamlToNix but forces the output to be a List.
 
 It does store data in the [.underline]#*nix store*#.
 
@@ -883,14 +882,15 @@ builtins.readFile (nixToYaml [{ a = 1;} { b = 2;} {c = 3;}])
 
 '''
 
+[#jsonToYaml]
 === `jsonToYaml`
-Converts JSON content to YAML.
+<<wrapper,Wrapped>>. Turns JSON source into YAML string.
 
 It does store data in the [.underline]#*nix store*#.
 
 [source,haskell]
 ----
-jsonToYaml :: Attrset { jsonContent, topLevelKey ? null } -> String
+jsonToYaml :: wrapped -> String
 ----
 
 The input is an Attrset of:
@@ -926,6 +926,7 @@ jsonToYaml { jsonContent = builtins.readFile ./services.json; topLevelKey = "ser
 ====
 
 '''
+
 
 === `jsonToYamlFile`
 Same as jsonToYaml but stores the YAML content in a file.
@@ -970,37 +971,3 @@ builtins.readFile (jsonToYamlFile { jsonContent = builtins.readFile ./server-cer
 ----
 ====
 
-'''
-
-=== `jsonFileToYamlFile`
-Same as jsonToYamlFile but automatically reads from a path.
-
-It does store data in the [.underline]#*nix store*#.
-
-[source,haskell]
-----
-jsonFileToYamlFile :: Attrset { path, topLevelKey ? null } -> Derivation
-----
-
-.example
-[%collapsible]
-====
-[source,nix]
-----
-builtins.readFile (jsonFileToYamlFile { path = ./services.json; topLevelKey = "services"; })
-"services:\n  - apiVersion: v1\n    kind: Service\n    metadata:\n      name: myapp\n      namespace: myapp\n      labels:\n        app: myapp\n        component: main\n    spec:\n      ports:\n        - name: http\n          port: 80\n          protocol: TCP\n          targetPort: http\n        - name: https\n          port: 443\n          protocol: TCP\n          targetPort: https\n      selector:\n        app: myapp\n        components: main\n  - apiVersion: v1\n    kind: Service\n    metadata:\n      name: myapp-jobscheduler\n      namespace: myapp\n      labels:\n        app: myapp\n        component: jobscheduler\n    spec:\n      ports:\n        - name: http\n          port: 3000\n          protocol: TCP\n          targetPort: http\n      selector:\n        app: myapp\n        component: jobscheduler\n"
-----
-====
-
-.implementation
-[%collapsible]
-====
-[source,nix]
-----
-{
-  jsonFileToYamlFile =
-    { path, topLevelKey ? null }@args:
-    kallPackage args jsonToYamlFile { jsonContent = builtins.readFile path; };
-}
-----
-====
