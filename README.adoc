@@ -172,11 +172,13 @@ rec {
 
 [#toList]
 === `toList`
-Turns a Nix list into the Nix equivalent of a Kubernetes resource list (kind: List)
+Turns a Nix list into the Nix equivalent of a Kubernetes resource list (kind: List) by default. You can set the list type using the first argument ("List" will be appended) as well as including `{ Kind = "SomeValue"; } in the override argument, since it uses `lib.attrsets.recursiveUpdate`.
+
+Useful if you want to generate a single JSON file to feed to the Addon Manager.
 
 [source,haskell]
 ----
-toList :: [a] -> kubernetes::List a
+toList :: (String / null) [a] Attrset -> kubernetes::ResourceList a
 ----
 
 .example
@@ -184,22 +186,32 @@ toList :: [a] -> kubernetes::List a
 ====
 [source,nix]
 ----
-toList [ { a = "some"; b = "data"; } { a = "some"; b = "other"; c = "data"; } ]
+toList "Pod" [{ apiVersion = "v1"; kind = "Pod"; }] { metadata.name = "my-pod-list"; }
 
 {
   apiVersion = "v1";
   items = [
     {
-      a = "some";
-      b = "data";
-    }
-    {
-      a = "some";
-      b = "other";
-      c = "data";
+      apiVersion = "v1";
+      kind = "Pod";
     }
   ];
-  kind = "List";
+  kind = "PodList";
+  metadata = { name = "my-pod-list"; };
+}
+
+toList null [{ apiVersion = "v1"; kind = "Pod"; }] { metadata.name = "my-pod-list"; kind = "MyKindList"; }
+
+{
+  apiVersion = "v1";
+  items = [
+    {
+      apiVersion = "v1";
+      kind = "Pod";
+    }
+  ];
+  kind = "MyKindList";
+  metadata = { name = "my-pod-list"; };
 }
 ----
 ====
@@ -210,11 +222,14 @@ toList [ { a = "some"; b = "data"; } { a = "some"; b = "other"; c = "data"; } ]
 [source,nix]
 ----
 {
-  toList = items: {
-    apiVersion = "v1";
-    kind = "List";
-    inherit items;
-  };
+  # Turns a Nix list into a generic Kubernetes Resource List
+  toList =
+    resourceType: items: overrides:
+    lib.attrsets.recursiveUpdate ({
+      apiVersion = "v1";
+      kind = ''${if resourceType != null then resourceType else ""}List'';
+      inherit items;
+  } (if overrides != null then overrides else {}));
 }
 ----
 ====

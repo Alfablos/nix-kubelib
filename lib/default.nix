@@ -13,11 +13,11 @@ rec {
   helm = pkgs.callPackage ./helm.nix { inherit nixToYaml; };
 
   # Turns a Nix list into a generic Kubernetes Resource List
-  toList = items: {
+  toList = resourceType: items: overrides: lib.attrsets.recursiveUpdate ({
     apiVersion = "v1";
-    kind = "List";
+    kind = ''${if resourceType != null then resourceType else ""}List'';
     inherit items;
-  };
+  } (if overrides != null then overrides else {}));
 
   keyValFromJsonManifest = args: wrapF args _keyValFromJsonManifest;
   # Takes a JSON kubernetes manifests and builds a key-value pair
