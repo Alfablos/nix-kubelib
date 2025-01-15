@@ -131,11 +131,8 @@ rec {
   # So even if a single object is passed the result will be a Nix list
   # with a single Attrset in it.
   yamlToNixList =
-    source:
-    let
-      fileAbsPaths = yamlToMultiJsonFilePaths { inherit source; };
-    in
-    map (path: readPathAndThen path fromJSON) fileAbsPaths;
+    args:
+    lib.lists.flatten [ (yamlToNix args) ];
 
   # Converts YAML content to JSON.
   yamlToJson =
@@ -149,10 +146,13 @@ rec {
   # Converts YAML content (object or list) to Nix. Evaluates to a list anyway if the
   # input is a list of objects.
   yamlToNix =
-    source:
-    fromJSON (yamlToJson {
-      inherit source;
-    });
+    args:
+    let
+      json_s = yamlToJson args;
+    in
+      if isList json_s
+      then lib.lists.flatten (map fromJSON json_s)
+      else fromJSON json_s;
 
   # Converts Nix to YAML.
   nixToYaml =
@@ -189,21 +189,6 @@ rec {
         if topLevelKey != null && jsonIsList source then "--expression '{ \"${topLevelKey}\":. }'" else "";
       installPhase = "${pkgs.yq-go}/bin/yq $sourcePath -p json -o yaml ${yqTransform} > $out";
     };
-
-  # Same as yyamlToMultiJsonFiles but for reading files directly.
-
-  # Same as yamlToNix but for reading files directly.
-  yamlFileToNix = path: readPathAndThen path yamlToNix;
-
-  # Sane as yyamlFileToNixList but for reading files directly.
-  yamlFileToNixList = path: readPathAndThen path yamlToNixList;
-
-  jsonFileToYamlFile =
-    {
-      path,
-      topLevelKey ? null,
-    }@args:
-    kallPackage args jsonToYamlFile { source = builtins.readFile path; };
 }
 
 

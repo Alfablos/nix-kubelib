@@ -24,9 +24,9 @@ The library has 2 main focuses: one is handling YAML, JSON and Nix conversions, 
 
 | YAML content (multiple objects) | - | `yamlToJson` | `yamlToJsonFile` | `yamlToMultiJsonFiles` | `yamlToNix` | `yamlToNixList`
 
-| YAML file (single object) | - | `yamlToJson` | `yamlToJsonFile` | `yamlToMultiJsonFiles` | `yamlFileToNix` | `yamlFileToNixList`
+| YAML file (single object) | - | `yamlToJson` | `yamlToJsonFile` | `yamlToMultiJsonFiles` | `yamlToNix` | `yamlToNixList`
 
-| YAML file (multiple objects) | - | `yamlToJson` | `yamlToJsonFile`| `yamlToMultiJsonFiles` | `yamlFileToNix` | `yamlFileToNixList`
+| YAML file (multiple objects) | - | `yamlToJson` | `yamlToJsonFile`| `yamlToMultiJsonFiles` | `yamlToNix` | `yamlToNixList`
 
 | Nix | `nixToYaml` | _builtin_ | _builtin_ | *no* | - | -
 
@@ -56,12 +56,10 @@ and resource namespace. In case of a non-namespaced resource, the kind is repeat
 
 * <<yamlToJson,`yamlToJson`>>
 * <<yamlToJsonFile,`yamlToJsonFile`>>
-* <<_yamlfiletonix,`yamlFileToNix`>>
-* <<_yamlfiletonixlist,`yamlFileToNixList`>>
 * <<yamlToMultiJsonFilePaths,`yamlToMultiJsonFilePaths`>>
 * <<yamlToMultiJsonFiles,`yamlToMultiJsonFiles`>>
-* <<_yamltonix,`yamlToNix`>>
-* <<_yamltonixlist,`yamlToNixList`>>
+* <<yamlToNix,`yamlToNix`>>
+* <<yamlToNixList,`yamlToNixList`>>
 
 [.underline]#*From JSON*# functions:
 
@@ -78,7 +76,10 @@ and resource namespace. In case of a non-namespaced resource, the kind is repeat
 
 [.underline]#*Others*#:
 
-* <<_tolist,`toList`>>
+* <<toList,`toList`>>
+
+=== Functions Naming
+Where possible the following naming convention is used: `($inputFormat)To($outputFormat)(?Files?)`
 
 [#wrapper]
 === Functions Signatures
@@ -158,7 +159,6 @@ rec {
     if isList args
     then map processUnit args
     else processUnit args;
-
 }
 ----
 ====
@@ -171,6 +171,7 @@ rec {
 
 == Lib Functions
 
+[#toList]
 === `toList`
 Turns a Nix list into the Nix equivalent of a Kubernetes resource list (kind: List)
 
@@ -360,7 +361,9 @@ keyValFromJsonManifestFiles [ ./server-cert.json ./services.json ]
 '''
 [#yamlToJson]
 === `yamlToJson`
-<<wrapper,Wrapped>>. Turns input YAML into JSON. It does store data in the [.underline]#*nix store*#.
+<<wrapper,Wrapped>>. Turns input YAML into JSON.
+
+It does store data in the [.underline]#*nix store*#.
 
 [source,haskell]
 ----
@@ -587,7 +590,9 @@ builtins.attrNames (builtins.readDir ( yamlToMultiJsonFiles { source = builtins.
 
 [#yamlToMultiJsonFilePaths]
 === `yamlToMultiJsonFilePaths`
-It turns YAML source describing ONE OR MORE Kubernetes resources into as many JSON manifests as resources described. The return value is a list of [.underline]#*absolute store paths*# containing *built files*. This function, unlike <<yamlToMultiJsonFiles,yamlToMultiJsonFiles>>, returns the list of built files. It does store data in the [.underline]#*nix store*#.
+It turns YAML source describing ONE OR MORE Kubernetes resources into as many JSON manifests as resources described. The return value is a list of [.underline]#*absolute store paths*# containing *built files*. This function, unlike <<yamlToMultiJsonFiles,yamlToMultiJsonFiles>>, returns the list of built files.
+
+It does store data in the [.underline]#*nix store*#.
 
 It uses yamlToMultiJsonFiles under the hood, inputs and logic are the same.
 
@@ -633,12 +638,15 @@ yamlToMultiJsonFilePaths [ ./tests/services.yml { source = ./tests/server-cert.y
 
 '''
 
+[#yamlToNix]
 === `yamlToNix`
-Loads parses YAML definitions into Nix language. It does store data in the [.underline]#*nix store*#.
+<<wrapper,Wrapped>>. Loads and parses YAML definitions into Nix.
+
+It does store data in the [.underline]#*nix store*#.
 
 [source,haskell]
 ----
-yamlToNix :: String -> Attrset / [Attrset]
+yamlToNix :: wrapped -> Attrset / [Attrset]
 ----
 
 .example
@@ -666,9 +674,7 @@ yamlToNix (builtins.readFile ./server-cert.yml)
   };
 }
 
-
-yamlToNix (builtins.readFile ./services.yml)
-
+yamlToNix [ (builtins.readFile ./tests/services.yml) ./tests/server-cert.yml ]
 [
   {
     apiVersion = "v1";
@@ -728,6 +734,23 @@ yamlToNix (builtins.readFile ./services.yml)
       };
     };
   }
+  {
+    apiVersion = "cert-manager.io/v1";
+    kind = "Certificate";
+    metadata = {
+      name = "mypp-serverauth";
+      namespace = "myapp";
+    };
+    spec = {
+      dnsNames = [ "myapp.mydomain.com" ];
+      issuerRef = {
+        kind = "ClusterIssuer";
+        name = "letsencrypt-dns";
+      };
+      secretName = "myapp-server-tls";
+      usages = [ "server auth" ];
+    };
+  }
 ]
 ----
 ====
@@ -739,23 +762,31 @@ yamlToNix (builtins.readFile ./services.yml)
 [source,nix]
 ----
 {
+  # Converts YAML content (object or list) to Nix. Evaluates to a list anyway if the
+  # input is a list of objects.
   yamlToNix =
-    yamlContent:
-    fromJSON (yamlToJson {
-      inherit yamlContent;
-    });
+    args:
+    let
+      json_s = yamlToJson args;
+    in
+      if isList json_s
+      then lib.lists.flatten (map fromJSON json_s)
+      else fromJSON json_s;
 }
 ----
 ====
 
 '''
 
+[#yamlToNixList]
 === `yamlToNixList`
-Same as yamlToNix but forces the output to be a List. It does store data in the [.underline]#*nix store*#.
+Same as yamlToNix but forces the output to be a List.
+
+It does store data in the [.underline]#*nix store*#.
 
 [source,haskell]
 ----
-yamlToNix :: String -> [Attrset]
+yamlToNixList :: wrapped -> [Attrset]
 ----
 
 .example
@@ -793,12 +824,12 @@ yamlToNixList (builtins.readFile ./server-cert.yml)
 [source,nix]
 ----
 {
+  # Converts YAML content to a Nix list forcing the output to be a list.
+  # So even if a single object is passed the result will be a Nix list
+  # with a single Attrset in it.
   yamlToNixList =
-    yamlContent:
-    let
-      fileAbsPaths = yamlToMultiJsonFilePaths { inherit yamlContent; };
-    in
-    map (path: readPathAndThen path fromJSON) fileAbsPaths;
+    args:
+    lib.lists.flatten [ (yamlToNix args) ];
 }
 ----
 ====
@@ -806,7 +837,9 @@ yamlToNixList (builtins.readFile ./server-cert.yml)
 '''
 
 === `nixToYaml`
-Converts Nix code to YAML string.  It does store data in the [.underline]#*nix store*#.
+Converts Nix code to YAML string.
+
+It does store data in the [.underline]#*nix store*#.
 
 [source,haskell]
 ----
@@ -851,7 +884,9 @@ builtins.readFile (nixToYaml [{ a = 1;} { b = 2;} {c = 3;}])
 '''
 
 === `jsonToYaml`
-Converts JSON content to YAML. It does store data in the [.underline]#*nix store*#.
+Converts JSON content to YAML.
+
+It does store data in the [.underline]#*nix store*#.
 
 [source,haskell]
 ----
@@ -893,7 +928,9 @@ jsonToYaml { jsonContent = builtins.readFile ./services.json; topLevelKey = "ser
 '''
 
 === `jsonToYamlFile`
-Same as jsonToYaml but stores the YAML content in a file.  It does store data in the [.underline]#*nix store*#.
+Same as jsonToYaml but stores the YAML content in a file.
+
+It does store data in the [.underline]#*nix store*#.
 
 [source,haskell]
 ----
@@ -936,7 +973,9 @@ builtins.readFile (jsonToYamlFile { jsonContent = builtins.readFile ./server-cer
 '''
 
 === `jsonFileToYamlFile`
-Same as jsonToYamlFile but automatically reads from a path. It does store data in the [.underline]#*nix store*#.
+Same as jsonToYamlFile but automatically reads from a path.
+
+It does store data in the [.underline]#*nix store*#.
 
 [source,haskell]
 ----
@@ -962,145 +1001,6 @@ builtins.readFile (jsonFileToYamlFile { path = ./services.json; topLevelKey = "s
   jsonFileToYamlFile =
     { path, topLevelKey ? null }@args:
     kallPackage args jsonToYamlFile { jsonContent = builtins.readFile path; };
-}
-----
-====
-
-'''
-
-=== `yamlFileToNix`
-Same as yamlToNix but with a path as an input, reading the file is handled internally. It does store data in the [.underline]#*nix store*#.
-
-[source,haskell]
-----
-yamlFileToNix :: p -> Attrset / [Attrset]
-----
-
-.example
-[%collapsible]
-====
-[source,nix]
-----
-yamlFileToNix ./services.yml
-[
-  {
-    apiVersion = "v1";
-    kind = "Service";
-    metadata = {
-      labels = {
-        app = "myapp";
-        component = "main";
-      };
-      name = "myapp";
-      namespace = "myapp";
-    };
-    spec = {
-      ports = [
-        {
-          name = "http";
-          port = 80;
-          protocol = "TCP";
-          targetPort = "http";
-        }
-        {
-          name = "https";
-          port = 443;
-          protocol = "TCP";
-          targetPort = "https";
-        }
-      ];
-      selector = {
-        app = "myapp";
-        components = "main";
-      };
-    };
-  }
-  {
-    apiVersion = "v1";
-    kind = "Service";
-    metadata = {
-      labels = {
-        app = "myapp";
-        component = "jobscheduler";
-      };
-      name = "myapp-jobscheduler";
-      namespace = "myapp";
-    };
-    spec = {
-      ports = [
-        {
-          name = "http";
-          port = 3000;
-          protocol = "TCP";
-          targetPort = "http";
-        }
-      ];
-      selector = {
-        app = "myapp";
-        component = "jobscheduler";
-      };
-    };
-  }
-]
-----
-====
-
-.implementation
-[%collapsible]
-====
-[source,nix]
-----
-{
-  yamlFileToNix = path: readPathAndThen path yamlToNix;
-}
-----
-====
-
-'''
-
-=== `yamlFileToNixList`
-Same as yamToNixList but with a path as an input, reading the file is handled internally. It does store data in the [.underline]#*nix store*#.
-
-[source,haskell]
-----
-yamlFileToNix :: p -> [Attrset]
-----
-
-.example
-[%collapsible]
-====
-[source,nix]
-----
-yamlFileToNixList ./server-cert.yml     # Only contains one cert-manager.io/v1/Certificate
-[
-  {
-    apiVersion = "cert-manager.io/v1";
-    kind = "Certificate";
-    metadata = {
-      name = "mypp-serverauth";
-      namespace = "myapp";
-    };
-    spec = {
-      dnsNames = [ "myapp.mydomain.com" ];
-      issuerRef = {
-        kind = "ClusterIssuer";
-        name = "letsencrypt-dns";
-      };
-      secretName = "myapp-server-tls";
-      usages = [ "server auth" ];
-    };
-  }
-]
-----
-====
-
-.implementation
-[%collapsible]
-====
-[source,nix]
-----
-{
-  yamlFileToNixList = path: readPathAndThen path yamlToNixList;
 }
 ----
 ====
