@@ -71,7 +71,7 @@ and resource namespace. In case of a non-namespaced resource, the kind is repeat
 
 [.underline]#*From Nix*# functions:
 
-* <<_nixtoyaml,`nixToYaml`>>
+* <<nixToYaml,`nixToYaml`>>
 
 [.underline]#*Others*#:
 
@@ -854,6 +854,7 @@ yamlToNixList (builtins.readFile ./server-cert.yml)
 
 '''
 
+[#nixToYaml]
 === `nixToYaml`
 Converts Nix code to YAML string.
 
@@ -883,17 +884,18 @@ builtins.readFile (nixToYaml [{ a = 1;} { b = 2;} {c = 3;}])
 [source,nix]
 ----
 {
+  # Converts Nix to YAML.
   nixToYaml =
-    attrs:
+    data:
     let
-      jsonContent = toJSON attrs;
+      j = toJSON data;
     in
     pkgs.stdenv.mkDerivation {
-      inherit jsonContent;
+      inherit j;
       name = "nixtoYaml";
-      passAsFile = [ "jsonContent" ];
+      passAsFile = [ "j" ];
       phases = [ "buildPhase" ];
-      buildPhase = "${pkgs.yq-go}/bin/yq -p json -o yaml $jsonContentPath > $out";
+      buildPhase = "${pkgs.yq-go}/bin/yq -p json -o yaml $jPath > $out";
     };
 }
 ----

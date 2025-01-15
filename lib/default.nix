@@ -160,9 +160,9 @@ rec {
 
   # Converts Nix to YAML.
   nixToYaml =
-    attrs:
+    data:
     let
-      j = toJSON attrs;
+      j = toJSON data;
     in
     pkgs.stdenv.mkDerivation {
       inherit j;
