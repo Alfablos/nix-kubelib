@@ -1,11 +1,11 @@
 { pkgs, lib, ... }:
 with builtins;
 let
-  inherit (import ./helpers.nix)
-    kallPackage
+  inherit (pkgs.callPackage ./helpers.nix { })
     readPathAndThen
     getGeneratedFiles
     wrapF
+    handleResult
     ;
 in
 rec {
@@ -53,6 +53,7 @@ rec {
     let
       pathList = map (p: keyValFromJsonManifestFile p) paths;
     in
+    # handleResult pathList lib.attrsets.mergeAttrsList;
     lib.attrsets.mergeAttrsList (lib.lists.flatten pathList);
 
   yamlToJsonFile = args: wrapF args _yamlToJsonFile;
@@ -137,9 +138,12 @@ rec {
   # Converts YAML content to JSON.
   yamlToJson =
     args:
+    let
+      process = a: wrapF a _yamlToJsonFile;
+    in
     if isList args
     then
-      let paths = map (a: wrapF a _yamlToJsonFile) args;
+      let paths = map process args;
       in map builtins.readFile paths    # No need to flatten, nested objects in a file remain in the generated file contents
     else readFile (wrapF args _yamlToJsonFile);
 
@@ -168,18 +172,26 @@ rec {
       buildPhase = "${pkgs.yq-go}/bin/yq -p json -o yaml $jPath > $out";
     };
 
+  # Turns JSON source into YAML string
   jsonToYaml =
-    {
-      source,
-      topLevelKey ? null,
-    }@args:
-    readFile (kallPackage args jsonToYamlFile { });
+    args:
+    let
+      result = wrapF args _jsonToYamlFile;
+    in
+    handleResult result readFile;
 
   jsonToYamlFile =
+    args:
+    handleResult (wrapF args _jsonToYamlFile) null;
+
+  _jsonToYamlFile =
     {
       source,
       topLevelKey ? null,
     }:
+    let
+      jsonIsList = j: isList (fromJSON j);
+    in
     pkgs.stdenv.mkDerivation rec {
       name = "json2yaml";
       inherit source topLevelKey;

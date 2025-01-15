@@ -1,3 +1,4 @@
+{ lib }:
 with builtins;
 rec {
   kallPackage =
@@ -10,11 +11,24 @@ rec {
 
   readPathAndThen = path: f: f (readFile path);
 
+  handleResult =
+    result: f:
+    let
+      fOrNull = r: if isNull f then r else f r;
+    in
+    if isList result
+    then lib.lists.flatten (map (r: fOrNull r) result)
+    else fOrNull result;
+
   # Allows to call a function in two ways:
   # - f /some/path or f (builtins.readFile /some/path) or f (drv)
   # - f { arg1 = "val1"; arg2 = "val2"; ... }
   # while calling the downstream function with a unified interface.
-  resolveArgs = args: if isAttrs args then args else { source = args; };
+  resolveArgs = args:
+    if isAttrs args then args
+    else if isList args
+      then lib.lists.flatten ( resolveArgs args )
+    else { source = args; };
 
   # Caller calls a function with args. Args can be { source, this, that, ... },
   # a path/string or a list of elements.
