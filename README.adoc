@@ -10,6 +10,23 @@ CAUTION: Many functions will [.underline]#*copy data to the Nix store*#, which y
 
 Some functions are convenience wrappers around others, so you can keep the code cleaner.
 
+== Dependencies
+* Nix standard library
+* nixpkgs standard library
+
+[%collapsible%]
+====
+* `lib.attrsets.attrNames`
+* `lib.attrsets.attrValues`
+* `lib.attrsets.recursiveUpdate`
+* `lib.attrsets.mapAttr`
+* `lib.lists.flatten`
+* `lib.lists.length`
+* `lib.strings.toLower`
+* `lib.strings.concatMapStrings`
+* `lib.strings.concatMapStringsSep`
+====
+* `pkgs.yq-go`
 
 == Lib
 The library has 2 main focuses: one is handling YAML, JSON and Nix conversions, while the other is managing Helm Charts.
@@ -65,7 +82,7 @@ and resource namespace. In case of a non-namespaced resource, the kind is repeat
 
 * <<jsonToYaml,`jsonToYaml`>>
 * <<jsonToYamlFile,`jsonToYamlFile`>>
-* <<_keyvalfromjsonmanifest,`keyValFromJsonManifest`>>
+* <<keyValFromJsonManifest,`keyValFromJsonManifest`>>
 * <<_keyvalfromjsonmanifestfile,`keyValFromJsonManifestFile`>>
 * <<_keyvalfromjsonmanifestfiles,`keyValFromJsonManifestFiles`>>
 
@@ -178,7 +195,7 @@ Useful if you want to generate a single JSON file to feed to the Addon Manager.
 
 [source,haskell]
 ----
-toList :: (String / null) [a] Attrset -> kubernetes::ResourceList a
+toList :: (String / null) [a] (Attrset / null) -> kubernetes::ResourceList a
 ----
 
 .example
@@ -236,8 +253,9 @@ toList null [{ apiVersion = "v1"; kind = "Pod"; }] { metadata.name = "my-pod-lis
 
 '''
 
+[#keyValFromJsonManifest]
 === `keyValFromJsonManifest`
-Takes a JSON kubernetes manifest `content` and builds a key-value pair from the manifest.
+<<wrapper,Wrapped>>. Takes a JSON kubernetes manifest `content` and builds a key-value pair from the manifest.
 
 - The *VALUE* is the content of the file itself
 
@@ -245,8 +263,7 @@ Takes a JSON kubernetes manifest `content` and builds a key-value pair from the 
 
 [source,haskell]
 ----
-keyValFromJsonManifest: a -> Attrset
-keyValFromJsonManifest: [a] -> [Attrset]
+keyValFromJsonManifest: <wrapped> -> Attrset
 ----
 
 .example
@@ -265,9 +282,19 @@ keyValFromJsonManifest (yamlToJson { yamlContent = builtins.readFile ./services.
   { myapp-service-myapp = "{\"apiVersion\":\"v1\",\"kind\":\"Service\",\"metadata\":{\"labels\":{\"app\":\"myapp\",\"component\":\"main\"},\"name\":\"myapp\",\"namespace\":\"myapp\"},\"spec\":{\"ports\":[{\"name\":\"http\",\"port\":80,\"protocol\":\"TCP\",\"targetPort\":\"http\"},{\"name\":\"https\",\"port\":443,\"protocol\":\"TCP\",\"targetPort\":\"https\"}],\"selector\":{\"app\":\"myapp\",\"components\":\"main\"}}}"; }
   { myapp-jobscheduler-service-myapp = "{\"apiVersion\":\"v1\",\"kind\":\"Service\",\"metadata\":{\"labels\":{\"app\":\"myapp\",\"component\":\"jobscheduler\"},\"name\":\"myapp-jobscheduler\",\"namespace\":\"myapp\"},\"spec\":{\"ports\":[{\"name\":\"http\",\"port\":3000,\"protocol\":\"TCP\",\"targetPort\":\"http\"}],\"selector\":{\"app\":\"myapp\",\"component\":\"jobscheduler\"}}}"; }
 ]
+
+keyValFromJsonManifest [ ./tests/services.json { source = ./tests/server-cert.json; } { source = builtins.readFile ./tests/server-cert.json; } ]
+
+[
+  [
+    { myapp-service-myapp = "{\"apiVersion\":\"v1\",\"kind\":\"Service\",\"metadata\":{\"labels\":{\"app\":\"myapp\",\"component\":\"main\"},\"name\":\"myapp\",\"namespace\":\"myapp\"},\"spec\":{\"ports\":[{\"name\":\"http\",\"port\":80,\"protocol\":\"TCP\",\"targetPort\":\"http\"},{\"name\":\"https\",\"port\":443,\"protocol\":\"TCP\",\"targetPort\":\"https\"}],\"selector\":{\"app\":\"myapp\",\"components\":\"main\"}}}"; }
+    { myapp-jobscheduler-service-myapp = "{\"apiVersion\":\"v1\",\"kind\":\"Service\",\"metadata\":{\"labels\":{\"app\":\"myapp\",\"component\":\"jobscheduler\"},\"name\":\"myapp-jobscheduler\",\"namespace\":\"myapp\"},\"spec\":{\"ports\":[{\"name\":\"http\",\"port\":3000,\"protocol\":\"TCP\",\"targetPort\":\"http\"}],\"selector\":{\"app\":\"myapp\",\"component\":\"jobscheduler\"}}}"; }
+  ]
+  { mypp-serverauth-certificate-myapp = "{\"apiVersion\":\"cert-manager.io/v1\",\"kind\":\"Certificate\",\"metadata\":{\"name\":\"mypp-serverauth\",\"namespace\":\"myapp\"},\"spec\":{\"dnsNames\":[\"myapp.mydomain.com\"],\"issuerRef\":{\"kind\":\"ClusterIssuer\",\"name\":\"letsencrypt-dns\"},\"secretName\":\"myapp-server-tls\",\"usages\":[\"server auth\"]}}"; }
+  { mypp-serverauth-certificate-myapp = "{\"apiVersion\":\"cert-manager.io/v1\",\"kind\":\"Certificate\",\"metadata\":{\"name\":\"mypp-serverauth\",\"namespace\":\"myapp\"},\"spec\":{\"dnsNames\":[\"myapp.mydomain.com\"],\"issuerRef\":{\"kind\":\"ClusterIssuer\",\"name\":\"letsencrypt-dns\"},\"secretName\":\"myapp-server-tls\",\"usages\":[\"server auth\"]}}"; }
+]
 ----
 ====
-
 
 .implementation
 [%collapsible]
@@ -275,11 +302,18 @@ keyValFromJsonManifest (yamlToJson { yamlContent = builtins.readFile ./services.
 [source,nix]
 ----
 {
-  keyValFromJsonManifest =
-    input:
+  keyValFromJsonManifest = args: wrapF args _keyValFromJsonManifest;
+  # Takes a JSON kubernetes manifests and builds a key-value pair
+  # from the manifest.
+  # - The VALUE is the content of the file itself
+  # - The KEY is the string interpolation of resource name, resource kind
+  #   and resource namespace. In case of a non-namespaced resource, the kind is repeated
+  _keyValFromJsonManifest =
+    { source }:
     let
-      nixData = fromJSON input;
-      process = c:
+      nixData = fromJSON source;
+      process =
+        c:
         let
           name = c.metadata.name;
           kind = lib.strings.toLower c.kind;
@@ -293,86 +327,12 @@ keyValFromJsonManifest (yamlToJson { yamlContent = builtins.readFile ./services.
         nixContent: if isList nixContent then map (cont: process cont) nixContent else process nixContent;
     in
     f nixData;
-
 }
 ----
 ====
 
 '''
 
-=== `keyValFromJsonManifestFile`
-Same as keyValFromJsonManifest but accespts a `path` instead of content.
-
-[source,haskell]
-----
-keyValFromJsonManifestFile :: p -> Attrset / [Attrset]
-----
-
-
-.example
-[%collapsible]
-====
-[source,nix]
-----
-keyValFromJsonManifestFile ./server-cert.json
-{ mypp-serverauth-certificate-myapp = "{\"apiVersion\":\"cert-manager.io/v1\",\"kind\":\"Certificate\",\"metadata\":{\"name\":\"mypp-serverauth\",\"namespace\":\"myapp\"},\"spec\":{\"dnsNames\":[\"myapp.mydomain.com\"],\"issuerRef\":{\"kind\":\"ClusterIssuer\",\"name\":\"letsencrypt-dns\"},\"secretName\":\"myapp-server-tls\",\"usages\":[\"server auth\"]}}"; }
-----
-====
-
-.implementation
-[%collapsible]
-====
-[source,nix]
-----
-{
-  keyValFromJsonManifestFile = path: readPathAndThen path keyValFromJsonManifest;
-}
-----
-====
-
-'''
-
-=== `keyValFromJsonManifestFiles`
-Same as keyValFromJsonManifestFile but deals with Lists of `paths`.+
-It supports paths to files with multiple objects within.
-
-[source,haskell]
-----
-keyValFromJsonManifestFiles :: [p] -> [Attrset]
-----
-
-.example
-[%collapsible]
-====
-[source,nix]
-----
-keyValFromJsonManifestFiles [ ./server-cert.json ./services.json ]
-{
-  myapp-jobscheduler-service-myapp = "{\"apiVersion\":\"v1\",\"kind\":\"Service\",\"metadata\":{\"labels\":{\"app\":\"myapp\",\"component\":\"jobscheduler\"},\"name\":\"myapp-jobscheduler\",\"namespace\":\"myapp\"},\"spec\":{\"ports\":[{\"name\":\"http\",\"port\":3000,\"protocol\":\"TCP\",\"targetPort\":\"http\"}],\"selector\":{\"app\":\"myapp\",\"component\":\"jobscheduler\"}}}";
-  myapp-service-myapp = "{\"apiVersion\":\"v1\",\"kind\":\"Service\",\"metadata\":{\"labels\":{\"app\":\"myapp\",\"component\":\"main\"},\"name\":\"myapp\",\"namespace\":\"myapp\"},\"spec\":{\"ports\":[{\"name\":\"http\",\"port\":80,\"protocol\":\"TCP\",\"targetPort\":\"http\"},{\"name\":\"https\",\"port\":443,\"protocol\":\"TCP\",\"targetPort\":\"https\"}],\"selector\":{\"app\":\"myapp\",\"components\":\"main\"}}}";
-  mypp-serverauth-certificate-myapp = "{\"apiVersion\":\"cert-manager.io/v1\",\"kind\":\"Certificate\",\"metadata\":{\"name\":\"mypp-serverauth\",\"namespace\":\"myapp\"},\"spec\":{\"dnsNames\":[\"myapp.mydomain.com\"],\"issuerRef\":{\"kind\":\"ClusterIssuer\",\"name\":\"letsencrypt-dns\"},\"secretName\":\"myapp-server-tls\",\"usages\":[\"server auth\"]}}";
-}
-
-----
-====
-
-.implementation
-[%collapsible]
-====
-[source,nix]
-----
-{
-  keyValFromJsonManifestFiles =
-    paths:
-    let
-      list = map (p: keyValFromJsonManifestFile p) paths;
-    in
-    lib.attrsets.mergeAttrsList (lib.lists.flatten pathList);
-}
-----
-====
-
-'''
 [#yamlToJson]
 === `yamlToJson`
 <<wrapper,Wrapped>>. Turns input YAML into JSON.
@@ -381,7 +341,7 @@ It does store data in the [.underline]#*nix store*#.
 
 [source,haskell]
 ----
-yamlToJson :: wrapped -> String
+yamlToJson :: <wrapped> -> String
 ----
 
 The input is an Attrset of:
@@ -456,7 +416,7 @@ cheduler\",\n      \"namespace\": \"myapp\",\n      \"labels\": {\n        \"app
 
 [source,haskell]
 ----
-yamlToJson :: wrapped -> Derivation
+yamlToJson :: <wrapped> -> Derivation
 ----
 
 As an input it supports an Attrset of:
@@ -534,7 +494,7 @@ It turns YAML source describing ONE OR MORE Kubernetes resources into as many JS
 
 [source,haskell]
 ----
-yamlToMultiJsonFiles :: wrapped -> Derivation
+yamlToMultiJsonFiles :: <wrapped> -> Derivation
 ----
 
 yamlToMultiJsonFiles, by default, uses the following https://github.com/mikefarah/yq[yq] expression to compute filenames: +
@@ -616,7 +576,7 @@ It uses yamlToMultiJsonFiles under the hood, inputs and logic are the same.
 
 [source,haskell]
 ----
-yamlToMultiJsonFilePaths :: wrapped -> [String]
+yamlToMultiJsonFilePaths :: <wrapped> -> [String]
 ----
 
 .example
@@ -664,7 +624,7 @@ It does store data in the [.underline]#*nix store*#.
 
 [source,haskell]
 ----
-yamlToNix :: wrapped -> Attrset / [Attrset]
+yamlToNix :: <wrapped> -> Attrset / [Attrset]
 ----
 
 .example
@@ -804,7 +764,7 @@ It does store data in the [.underline]#*nix store*#.
 
 [source,haskell]
 ----
-yamlToNixList :: wrapped -> [Attrset]
+yamlToNixList :: <wrapped> -> [Attrset]
 ----
 
 .example
@@ -862,7 +822,7 @@ It does store data in the [.underline]#*nix store*#.
 
 [source,haskell]
 ----
-nixToYaml :: Attrset -> String
+nixToYaml :: (Attrset /List / String) -> String
 ----
 
 .example
@@ -911,7 +871,7 @@ It does store data in the [.underline]#*nix store*#.
 
 [source,haskell]
 ----
-jsonToYaml :: wrapped -> String
+jsonToYaml :: <wrapped> -> String
 ----
 
 The input is an Attrset of:
@@ -957,7 +917,7 @@ It does store data in the [.underline]#*nix store*#.
 
 [source,haskell]
 ----
-jsonToYamlFile :: Attrset { jsonContent, topLevelKey ? null } -> Derivation
+jsonToYamlFile :: <wrapped> -> Derivation
 ----
 
 .example
@@ -966,6 +926,7 @@ jsonToYamlFile :: Attrset { jsonContent, topLevelKey ? null } -> Derivation
 [source,nix]
 ----
 builtins.readFile (jsonToYamlFile { jsonContent = builtins.readFile ./server-cert.json; topLevelKey = "services";})
+
 "apiVersion: cert-manager.io/v1\nkind: Certificate\nmetadata:\n  name: mypp-serverauth\n  namespace: myapp\nspec:\n  issuerRef:\n    kind: ClusterIssuer\n    name: letsencrypt-dns\n  secretName: myapp-server-tls\n  usages:\n    - server auth\n  dnsNames:\n    - myapp.mydomain.com\n"
 ----
 ====

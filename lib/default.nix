@@ -41,20 +41,13 @@ rec {
         };
 
       f =
-        nixContent: if isList nixContent then map (cont: process cont) nixContent else process nixContent;
+        nixContent:
+        if isList nixContent
+        then map (cont: process cont) nixContent
+        else process nixContent;
     in
     f nixData;
 
-  keyValFromJsonManifestFile = path: readPathAndThen path keyValFromJsonManifest;
-  # Same as kkeyValFromJsonManifest but deals with list of resources
-
-  keyValFromJsonManifestFiles =
-    paths:
-    let
-      pathList = map (p: keyValFromJsonManifestFile p) paths;
-    in
-    # handleResult pathList lib.attrsets.mergeAttrsList;
-    lib.attrsets.mergeAttrsList (lib.lists.flatten pathList);
 
   yamlToJsonFile = args: wrapF args _yamlToJsonFile;
 
