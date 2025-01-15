@@ -83,8 +83,6 @@ and resource namespace. In case of a non-namespaced resource, the kind is repeat
 * <<jsonToYaml,`jsonToYaml`>>
 * <<jsonToYamlFile,`jsonToYamlFile`>>
 * <<keyValFromJsonManifest,`keyValFromJsonManifest`>>
-* <<_keyvalfromjsonmanifestfile,`keyValFromJsonManifestFile`>>
-* <<_keyvalfromjsonmanifestfiles,`keyValFromJsonManifestFiles`>>
 
 [.underline]#*From Nix*# functions:
 
