@@ -1,0 +1,21 @@
+{
+  "apiVersion": "cert-manager.io/v1",
+  "kind": "Certificate",
+  "metadata": {
+    "name": "mypp-serverauth",
+    "namespace": "myapp"
+  },
+  "spec": {
+    "issuerRef": {
+      "kind": "ClusterIssuer",
+      "name": "letsencrypt-dns"
+    },
+    "secretName": "myapp-server-tls",
+    "usages": [
+      "server auth"
+    ],
+    "dnsNames": [
+      "myapp.mydomain.com"
+    ]
+  }
+}

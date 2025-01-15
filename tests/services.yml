@@ -1,0 +1,44 @@
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp
+  namespace: myapp
+  labels:
+    app: myapp
+    component: main
+spec:
+  ports:
+    - name: http
+      port: 80
+      protocol: TCP
+      targetPort: http
+    - name: https
+      port: 443
+      protocol: TCP
+      targetPort: https
+  selector:
+    app: myapp
+    components: main
+
+---
+
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-jobscheduler
+  namespace: myapp
+  labels:
+    app: myapp
+    component: jobscheduler
+spec:
+  ports:
+    - name: http
+      port: 3000
+      protocol: TCP
+      targetPort: http
+  selector:
+    app: myapp
+    component: jobscheduler
+
