@@ -12,7 +12,6 @@
     flake-utils.lib.eachDefaultSystem (
       system:
       let
-        system = "x86_64-linux";
         pkgs = import nixpkgs { inherit system; };
         inherit (pkgs) lib;
         kubelib = pkgs.callPackage ./lib { };
