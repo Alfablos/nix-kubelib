@@ -240,13 +240,11 @@ toKubernetesList null [{ apiVersion = "v1"; kind = "Pod"; }] { metadata.name = "
 ----
 {
   # Turns a Nix list into a generic Kubernetes Resource List
-  toKubernetesList =
-    resourceType: items: overrides:
-    lib.attrsets.recursiveUpdate ({
-      apiVersion = "v1";
-      kind = ''${if resourceType != null then resourceType else ""}List'';
-      inherit items;
-  } (if overrides != null then overrides else {}));
+  toKubernetesList = resourceType: items: overrides: lib.attrsets.recursiveUpdate {
+    apiVersion = "v1";
+    kind = ''${if resourceType != null then resourceType else ""}List'';
+    inherit items;
+  } (if overrides != null then overrides else {});
 }
 ----
 ====
