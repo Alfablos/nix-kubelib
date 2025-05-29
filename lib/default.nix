@@ -12,6 +12,33 @@ rec {
 
   helm = pkgs.callPackage ./helm.nix { inherit nixToYaml; };
 
+
+  yamlToNixFileAttrs =
+    # ./path/to/file.json or [ /path/to/file1.json /path/to/file2.json ]
+    args:
+    let
+      processUnit = yamlPath:
+      let
+        res = if isPath yamlPath then yamlToMultiJsonFiles yamlPath
+              else throw "${yamlPath} is not a valid/existing path.";
+        dir = res.outPath;
+        # [ { name: filename.json; value: /full/path/To/File.json } ... ]
+        # filesAsNV =  lib.lists.map (n: { name = (lib.strings.removeSuffix ".json" n); value = "${dir}/${n}"; }) (attrNames (readDir dir));
+        # Only `.json` files
+        jsonFiles = lib.lists.filter (fn: lib.strings.hasSuffix ".json" fn) (attrNames (readDir dir));
+        # { fileNameNoDotJson = "JSON content..."; }
+        contentMap = lib.lists.map (fname: {  "${lib.strings.removeSuffix ".json" fname}" = fromJSON (readFile "${dir}/${fname}"); }) jsonFiles;
+        # [ { name: filename; value = filecontent; } ... ]
+        # filesAttrs = lib.lists.map (attrs: { inherit (attrs) name; value = builtins.fromJSON (builtins.readFile attrs.value); }) filesAsNV;
+      in 
+      lib.lists.foldr (attrs1: attrs2: attrs1 // attrs2) {} contentMap;
+    in
+    if isList args
+    then
+      lib.lists.foldr (attrs1: attrs2: attrs1 // attrs2) {} (lib.lists.map (path: processUnit path) args)
+    else processUnit args;
+
+
   # Turns a Nix list into a generic Kubernetes Resource List
   toKubernetesList = resourceType: items: overrides: lib.attrsets.recursiveUpdate {
     apiVersion = "v1";

@@ -23,12 +23,28 @@ rec {
   # Allows to call a function in two ways:
   # - f /some/path or f (builtins.readFile /some/path) or f (drv)
   # - f { arg1 = "val1"; arg2 = "val2"; ... }
-  # while calling the downstream function with a unified interface.
+  # The downstream function (wrapF) will only have to handle 3 cases:
+  # - List
+  # - Attrs { source = args; }
+  # - Attrs { some = "thing"; something = "else"; }
+  # 
+  # -> resolveArgs [ ./deploy.yml ./deploys.yml ]
+  # [
+  #   /path/to/deploy.yml
+  #   /path/to/deploys.yml
+  # ]
+  #
+  # -> resolveArgs { a = 1; b = 2; }
+  # { a = 1; b = 2; }
+  #
+  # -> resolveArgs "test"
+  # { source = "test"; }
   resolveArgs = args:
     if isAttrs args then args
     else if isList args
       then lib.lists.flatten ( resolveArgs args )
     else { source = args; };
+
 
   # Caller calls a function with args. Args can be { source, this, that, ... },
   # a path/string or a list of elements.
